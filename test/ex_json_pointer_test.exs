@@ -27,7 +27,8 @@ defmodule ExJSONPointerTest do
     "a" => %{
       "b" => %{
         "c" => [1, 2, 3],
-        "" => "empty string"
+        "" => "empty string",
+        "d" => nil
       },
       "b2" => %{
         "c2" => [
@@ -55,28 +56,37 @@ defmodule ExJSONPointerTest do
     end
 
     test "nesting map" do
-      assert ExJSONPointer.resolve(@nesting_data, "/") == {:ok, %{
-               "a" => %{
-                 "b" => %{
-                   "c" => [1, 2, 3],
-                   "" => "empty string from empty token"
-                 }
-               }
-             }}
+      assert ExJSONPointer.resolve(@nesting_data, "/") ==
+               {:ok,
+                %{
+                  "a" => %{
+                    "b" => %{
+                      "c" => [1, 2, 3],
+                      "" => "empty string from empty token"
+                    }
+                  }
+                }}
+
       assert ExJSONPointer.resolve(@nesting_data, "/a/b/4") == {:error, "not found"}
       assert ExJSONPointer.resolve(@nesting_data, "/a/b/c/4") == {:error, "not found"}
       assert ExJSONPointer.resolve(@nesting_data, "/a/b/c/unknown") == {:error, "not found"}
       assert ExJSONPointer.resolve(@nesting_data, "/a/b/c/0") == {:ok, 1}
+      assert ExJSONPointer.resolve(@nesting_data, "/a/b/d") == {:ok, nil}
 
-      assert ExJSONPointer.resolve(@nesting_data, "/a/b") == {:ok, %{
-               "c" => [1, 2, 3],
-               "" => "empty string"
-             }}
+      assert ExJSONPointer.resolve(@nesting_data, "/a/b") ==
+               {:ok,
+                %{
+                  "c" => [1, 2, 3],
+                  "" => "empty string",
+                  "d" => nil
+                }}
 
-      assert ExJSONPointer.resolve(@nesting_data, "//a/b") == {:ok, %{
-               "c" => [1, 2, 3],
-               "" => "empty string from empty token"
-             }}
+      assert ExJSONPointer.resolve(@nesting_data, "//a/b") ==
+               {:ok,
+                %{
+                  "c" => [1, 2, 3],
+                  "" => "empty string from empty token"
+                }}
 
       assert ExJSONPointer.resolve(@nesting_data, "/a/b/") == {:ok, "empty string"}
     end
@@ -110,24 +120,33 @@ defmodule ExJSONPointerTest do
       assert ExJSONPointer.resolve(@nesting_data, "#/a/b/c/4") == {:error, "not found"}
       assert ExJSONPointer.resolve(@nesting_data, "#/a/b/c/0") == {:ok, 1}
 
-      assert ExJSONPointer.resolve(@nesting_data, "#/a/b") == {:ok, %{
-               "c" => [1, 2, 3],
-               "" => "empty string"
-             }}
+      assert ExJSONPointer.resolve(@nesting_data, "#/a/b") ==
+               {:ok,
+                %{
+                  "c" => [1, 2, 3],
+                  "" => "empty string",
+                  "d" => nil
+                }}
 
-      assert ExJSONPointer.resolve(@nesting_data, "#a/b") == {:ok, %{
-               "c" => [1, 2, 3],
-               "" => "empty string"
-             }}
+      assert ExJSONPointer.resolve(@nesting_data, "#a/b") ==
+               {:ok,
+                %{
+                  "c" => [1, 2, 3],
+                  "" => "empty string",
+                  "d" => nil
+                }}
 
       assert ExJSONPointer.resolve(@nesting_data, "##/a/b") == {
-               :error, "invalid JSON pointer syntax"
+               :error,
+               "invalid JSON pointer syntax"
              }
 
-      assert ExJSONPointer.resolve(@nesting_data, "#//a/b") == {:ok, %{
-               "c" => [1, 2, 3],
-               "" => "empty string from empty token"
-             }}
+      assert ExJSONPointer.resolve(@nesting_data, "#//a/b") ==
+               {:ok,
+                %{
+                  "c" => [1, 2, 3],
+                  "" => "empty string from empty token"
+                }}
 
       assert ExJSONPointer.resolve(@nesting_data, "#/a/b/") == {:ok, "empty string"}
     end
@@ -147,17 +166,21 @@ defmodule ExJSONPointerTest do
 
   test "the ref token is exceeded the index of array" do
     assert ExJSONPointer.resolve(%{"a" => %{"b" => %{"c" => [1, 2, 3]}}}, "/a/b/c/0") == {:ok, 1}
-    assert ExJSONPointer.resolve(%{"a" => %{"b" => %{"c" => [1, 2, 3]}}}, "/a/b/c/4") == {:error, "not found"}
+
+    assert ExJSONPointer.resolve(%{"a" => %{"b" => %{"c" => [1, 2, 3]}}}, "/a/b/c/4") ==
+             {:error, "not found"}
   end
 
   test "the ref token size is exceeded the depth of input json" do
-    assert ExJSONPointer.resolve(%{"a" => %{"b" => %{"c" => [1, 2, 3]}}}, "/a/b/c///") == {:error, "not found"}
+    assert ExJSONPointer.resolve(%{"a" => %{"b" => %{"c" => [1, 2, 3]}}}, "/a/b/c///") ==
+             {:error, "not found"}
   end
 
   test "use resolve_while/4 to struct a map with the refer token and value" do
     data = %{"a" => %{"b" => %{"c" => [10, 20, 30]}, "b2" => "b2_value"}}
 
     init_acc = %{}
+
     fun = fn current, ref_token, {_document, acc} ->
       if current != nil do
         {:cont, {current, Map.put(acc, ref_token, current)}}
@@ -194,24 +217,31 @@ defmodule ExJSONPointerTest do
       }
     }
 
-
     fun = fn current, ref_token, {document, acc} ->
       {levels, ref_tokens} = acc
       {:cont, {current, {[document | levels], [ref_token | ref_tokens]}}}
     end
 
     init_acc = {[], []}
-    {value, {levels, ref_tokens}} = ExJSONPointer.RFC6901.resolve_while(data, "/foo/1", init_acc, fun)
+
+    {value, {levels, ref_tokens}} =
+      ExJSONPointer.RFC6901.resolve_while(data, "/foo/1", init_acc, fun)
+
     full_levels = [value | levels]
 
     assert Enum.at(full_levels, 1) == ["bar", "baz"]
     assert Enum.at(full_levels, 2) == data
     assert ref_tokens == ["1", "foo"]
 
-    {value, {levels, ref_tokens}} = ExJSONPointer.RFC6901.resolve_while(data, "/highly/nested", init_acc, fun)
+    {value, {levels, ref_tokens}} =
+      ExJSONPointer.RFC6901.resolve_while(data, "/highly/nested", init_acc, fun)
+
     full_levels = [value | levels]
 
-    assert Enum.at(full_levels, 1) == %{"nested" => %{"objects" => true, "values" => ["!@#$%^&*()"]}}
+    assert Enum.at(full_levels, 1) == %{
+             "nested" => %{"objects" => true, "values" => ["!@#$%^&*()"]}
+           }
+
     assert Enum.at(full_levels, 2) == data
     assert ref_tokens == ["nested", "highly"]
   end
