@@ -52,6 +52,13 @@ iex> ExJSONPointer.resolve(%{"a" => [%{"b" => %{"c" => [1, 2]}}, 2, 3]}, "#/a/0/
 {:ok, 2}
 ```
 
+If the existing JSON pointer points to a `nil` value, then it will return `{:ok, nil}` in this case.
+
+```elixir
+iex> ExJSONPointer.resolve(%{"a" => %{"b" => nil}}, "/a/b")
+{:ok, nil}
+```
+
 Some cases that a JSON pointer that references a nonexistent value:
 
 ```elixir
