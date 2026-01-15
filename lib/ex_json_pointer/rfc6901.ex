@@ -27,8 +27,11 @@ defmodule ExJSONPointer.RFC6901 do
     resolve_json_str(document, pointer)
   end
 
-  defp do_resolve(document, "#" <> _pointer_str = pointer) do
-    # URI Fragment Identifier Representation
+  defp do_resolve(document, "#/" <> _pointer_str = pointer) do
+    # URI Fragment Identifier Representation.
+    #
+    # follow the syntax specified in [RFC-6901 Section 3], which consists of zero or more reference tokens,
+    # each prefixed with a forward slash character "/" (%x2F).
     resolve_uri_fragment(document, pointer)
   end
 

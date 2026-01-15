@@ -129,12 +129,7 @@ defmodule ExJSONPointerTest do
                 }}
 
       assert ExJSONPointer.resolve(@nesting_data, "#a/b") ==
-               {:ok,
-                %{
-                  "c" => [1, 2, 3],
-                  "" => "empty string",
-                  "d" => nil
-                }}
+               {:error, "invalid JSON pointer syntax"}
 
       assert ExJSONPointer.resolve(@nesting_data, "##/a/b") == {
                :error,

@@ -103,6 +103,9 @@ iex> ExJSONPointer.resolve(%{"a" =>%{"b" => %{"c" => [1, 2, 3]}}}, "a/b")
 iex> ExJSONPointer.resolve(%{"a" =>%{"b" => %{"c" => [1, 2, 3]}}}, "##/a")
 {:error, "invalid JSON pointer syntax"}
 
+iex> ExJSONPointer.resolve(%{"a" =>%{"b" => %{"c" => [1, 2, 3]}}}, "#a")
+{:error, "invalid JSON pointer syntax"}
+
 ```
 
 ## Relative JSON Pointer
