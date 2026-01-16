@@ -24,12 +24,14 @@ defmodule ExJSONPointer do
   @type result :: {:ok, term()} | {:error, String.t()}
 
   @doc """
-  Resolve the JSON document with the given JSON Pointer to find the accompanying value.
+  Resolves a value from a JSON document using a JSON Pointer.
+
+  Implements [RFC 6901](https://tools.ietf.org/html/rfc6901).
 
   The pointer can be either:
-  - An empty string ("") or "#" to reference the whole document
-  - A JSON String Representation starting with "/"
-  - A URI Fragment Identifier Representation starting with "#"
+  - An empty string `""` or `"#"` to reference the whole document.
+  - A JSON String Representation starting with `/`.
+  - A URI Fragment Identifier Representation starting with `#`.
 
   ## Examples
 
@@ -45,20 +47,21 @@ defmodule ExJSONPointer do
   defdelegate resolve(document, pointer), to: __MODULE__.RFC6901
 
   @doc """
-  Resolve a relative JSON pointer from a starting position within a JSON document.
+  Resolves a relative JSON pointer starting from a specific location within a JSON document.
 
-  This function implements the Relative JSON Pointer specification as described in
-  [draft-bhutton-relative-json-pointer-00](https://datatracker.ietf.org/doc/html/draft-bhutton-relative-json-pointer-00).
+  Implements the Relative JSON Pointer specification (e.g. [draft-handrews-relative-json-pointer-01](https://tools.ietf.org/html/draft-handrews-relative-json-pointer-01)).
 
   A relative JSON pointer consists of:
-  - A non-negative integer (prefix) that indicates how many levels up to traverse
-  - An optional index manipulation (+N or -N) for array elements
-  - An optional JSON pointer to navigate from the referenced location
+  - A non-negative integer (prefix) indicating how many levels up to traverse.
+  - An optional index manipulation (`+N` or `-N`) for array elements.
+  - An optional JSON pointer to navigate downwards from the referenced location.
+  - Or a `#` to retrieve the key/index of the current value.
 
   ## Parameters
-  - `document`: The JSON document to be processed
-  - `start_json_pointer`: A JSON pointer that identifies the starting location within the document
-  - `relative`: The relative JSON pointer to evaluate from the starting location
+
+  - `document`: The JSON document to be processed.
+  - `start_json_pointer`: A JSON pointer that identifies the starting location within the document.
+  - `relative`: The relative JSON pointer string to evaluate.
 
   ## Examples
 
@@ -78,23 +81,30 @@ defmodule ExJSONPointer do
   defdelegate resolve(document, start_json_pointer, relative), to: __MODULE__.Relative
 
   @doc """
-  Resolve a JSON pointer while accumulating state during traversal.
+  Traverses a JSON document using a JSON pointer, maintaining an accumulator.
 
-  This function allows you to track the traversal path and accumulate values as the JSON pointer
-  is being resolved. It is designed to be useful for implementing operations that need context
-  about the traversal path, such as relative JSON pointers.
+  This function is similar to `Enum.reduce_while/3` but follows the path of a JSON Pointer.
+  It allows tracking the traversal path and accumulating values as the pointer is resolved.
+  This is useful for implementing operations that require context about the traversal path,
+  such as Relative JSON Pointers.
 
   ## Parameters
-  - `document`: The JSON document to be processed
-  - `pointer`: A JSON pointer that identifies the location within the document
-  - `acc`: An initial accumulator value that will be passed to the resolve function
-  - `resolve_fun`: A function that receives the current value, reference token, and accumulated state
-    and returns either `{:cont, {new_value, new_acc}}` to continue or `{:halt, result}` to stop traversal
+
+  - `document`: The JSON document to be processed.
+  - `pointer`: A JSON pointer string.
+  - `acc`: An initial accumulator value.
+  - `resolve_fun`: A callback function invoked for each segment of the pointer.
+
+  ## The Callback Function
 
   The `resolve_fun` receives three arguments:
-  - The current value at the reference token
-  - The current reference token being processed
-  - A tuple containing the processing document and the current accumulator
+  1. The current value found at the reference token.
+  2. The current reference token (key or index) being processed.
+  3. A tuple `{current_document, accumulator}` containing the document context at the current level and the accumulator.
+
+  It must return one of:
+  - `{:cont, {new_value, new_acc}}`: Continues traversal with `new_value` as the context for the next token and `new_acc` as the updated accumulator.
+  - `{:halt, result}`: Stops traversal immediately and returns `result`.
 
   ## Examples
 
@@ -103,10 +113,10 @@ defmodule ExJSONPointer do
       iex> fun = fn current, ref_token, {_document, acc} ->
       ...>   {:cont, {current, Map.put(acc, ref_token, current)}}
       ...> end
-      iex> {value, result} = ExJSONPointer.resolve_while(data, "/a/b/c/0", init_acc, fun)
+      iex> {value, acc} = ExJSONPointer.resolve_while(data, "/a/b/c/0", init_acc, fun)
       iex> value
       10
-      iex> result["c"]
+      iex> acc["c"]
       [10, 20, 30]
   """
   @spec resolve_while(document, pointer, acc, (term, String.t(), {document, acc} -> {:cont, {term, acc}} | {:halt, term})) :: {term, acc} | {:error, String.t()} when acc: term()
