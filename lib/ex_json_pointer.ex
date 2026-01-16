@@ -111,4 +111,51 @@ defmodule ExJSONPointer do
   """
   @spec resolve_while(document, pointer, acc, (term, String.t(), {document, acc} -> {:cont, {term, acc}} | {:halt, term})) :: {term, acc} | {:error, String.t()} when acc: term()
   defdelegate resolve_while(document, pointer, acc, resolve_fun), to: __MODULE__.RFC6901
+
+  @doc """
+  Validates if the given string follows the JSON Pointer format (RFC 6901, section 5).
+
+  According to JSON Schema specification (draft 2020-12), the `json-pointer` format
+  expects the string to be a valid JSON String Representation of a JSON Pointer.
+  This means it must either be an empty string or start with a slash `/`. URI Fragment
+  Identifier Representations (starting with `#`) are not considered valid
+  for this format check.
+
+  It also validates that tilde `~` characters are properly escaped as `~0` (for `~`)
+  or `~1` (for `/`).
+
+  ## Examples
+
+      iex> ExJSONPointer.valid_json_pointer?("/foo/bar")
+      true
+
+      iex> ExJSONPointer.valid_json_pointer?("/foo/bar~0/baz~1/%a")
+      true
+
+      iex> ExJSONPointer.valid_json_pointer?("")
+      true
+
+      iex> ExJSONPointer.valid_json_pointer?("/")
+      true
+
+      iex> ExJSONPointer.valid_json_pointer?("/foo//bar")
+      true
+
+      iex> ExJSONPointer.valid_json_pointer?("/~1.1")
+      true
+
+      iex> ExJSONPointer.valid_json_pointer?("/foo/bar~")
+      false
+
+      iex> ExJSONPointer.valid_json_pointer?("/~2")
+      false
+
+      iex> ExJSONPointer.valid_json_pointer?("#")
+      false
+
+      iex> ExJSONPointer.valid_json_pointer?("some/path")
+      false
+  """
+  @spec valid_json_pointer?(pointer) :: boolean()
+  defdelegate valid_json_pointer?(pointer), to: __MODULE__.RFC6901
 end

@@ -14,6 +14,14 @@ defmodule ExJSONPointer.RFC6901 do
     do_resolve(document, pointer)
   end
 
+  def valid_json_pointer?(""), do: true
+  def valid_json_pointer?("/"), do: true
+  def valid_json_pointer?("/" <> _ = pointer) do
+    # Check for invalid tilde usage: ~ not followed by 0 or 1, or ~ at end
+    not Regex.match?(~r/~[^01]|~$/, pointer)
+  end
+  def valid_json_pointer?(_), do: false
+
   # Unescapes the reference token by replacing ~1 with / and ~0 with ~
   defp unescape(pointer) do
     String.replace(pointer, ["~1", "~0"], fn
