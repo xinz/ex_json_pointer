@@ -4,6 +4,19 @@ defmodule ExJSONPointer.Relative do
   @error_not_found {:error, "not found"}
   @error_syntax {:error, "invalid relative JSON pointer syntax"}
 
+  def valid_relative_json_pointer?(pointer) do
+    case Regex.named_captures(relative_json_pointer_regex(), pointer) do
+      %{"json_pointer" => "/" <> _ = json_pointer} ->
+        ExJSONPointer.RFC6901.valid_json_pointer?(json_pointer)
+
+      %{} ->
+        true
+
+      nil ->
+        false
+    end
+  end
+
   def resolve(_docoument, "", _relative) do
     # Refer https://datatracker.ietf.org/doc/html/draft-bhutton-relative-json-pointer-00#section-4
     # If the current referenced value is the root of the document, then evaluation fails.

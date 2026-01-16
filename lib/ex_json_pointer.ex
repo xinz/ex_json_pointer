@@ -158,4 +158,32 @@ defmodule ExJSONPointer do
   """
   @spec valid_json_pointer?(pointer) :: boolean()
   defdelegate valid_json_pointer?(pointer), to: __MODULE__.RFC6901
+
+  @doc """
+  Validates if the given string follows the Relative JSON Pointer format.
+
+  This implements the validation for the `relative-json-pointer` format from JSON Schema.
+  A relative JSON pointer consists of:
+  - A non-negative integer prefix (0, 1, 2...)
+  - An optional index manipulation (+/- and integer) (e.g., +1, -1)
+  - Followed by either:
+    - A hash character `#`
+    - A JSON Pointer (starting with `/` or empty)
+
+  ## Examples
+
+      iex> ExJSONPointer.valid_relative_json_pointer?("1")
+      true
+
+      iex> ExJSONPointer.valid_relative_json_pointer?("0/foo/bar")
+      true
+
+      iex> ExJSONPointer.valid_relative_json_pointer?("0#")
+      true
+
+      iex> ExJSONPointer.valid_relative_json_pointer?("/foo/bar")
+      false
+  """
+  @spec valid_relative_json_pointer?(String.t()) :: boolean()
+  defdelegate valid_relative_json_pointer?(pointer), to: __MODULE__.Relative
 end
