@@ -47,6 +47,65 @@ defmodule ExJSONPointer do
   defdelegate resolve(document, pointer), to: __MODULE__.RFC6901
 
   @doc """
+  Resolves multiple JSON Pointers against a JSON document in a batch.
+
+  This function is useful when you need to resolve a set of pointers against the
+  same document and some of those pointers share common prefixes. In those cases,
+  the implementation may reuse part of the traversal work instead of resolving
+  every pointer fully and independently.
+
+  The function uses an adaptive strategy internally:
+  - for smaller batches, or for batches with enough shared leading tokens, it
+    uses a grouped traversal strategy;
+  - for sparse batches with little shared prefix overlap, it falls back to
+    resolving each pointer individually.
+
+  The returned value is always a map keyed by the original pointer strings, where
+  each value is the same kind of result returned by `resolve/2`.
+
+  ## Parameters
+
+  - `document`: The JSON document to be processed.
+  - `pointers`: A list of JSON pointer strings.
+
+  ## Notes
+
+  - An empty string `""` or `"#"` resolves to the whole document.
+  - Invalid pointer syntax is reported per pointer as
+    `{:error, "invalid JSON pointer syntax"}`.
+  - Missing values are reported per pointer as `{:error, "not found"}`.
+  - When duplicate pointers are given, the returned map contains a single entry
+    for that pointer key, following normal map semantics.
+
+  ## Examples
+
+      iex> doc = %{"foo" => %{"bar" => "baz", "qux" => "corge"}}
+      iex> ExJSONPointer.batch_resolve(doc, ["/foo/bar", "/foo/qux", "/foo/unknown"])
+      %{
+        "/foo/bar" => {:ok, "baz"},
+        "/foo/qux" => {:ok, "corge"},
+        "/foo/unknown" => {:error, "not found"}
+      }
+
+      iex> doc = %{"users" => %{"1" => %{"profile" => %{"name" => "alice", "email" => "alice@example.com"}}}}
+      iex> ExJSONPointer.batch_resolve(doc, ["/users/1/profile/name", "/users/1/profile/email"])
+      %{
+        "/users/1/profile/name" => {:ok, "alice"},
+        "/users/1/profile/email" => {:ok, "alice@example.com"}
+      }
+
+      iex> doc = %{"foo" => "bar"}
+      iex> ExJSONPointer.batch_resolve(doc, ["", "#", "foo"])
+      %{
+        "" => {:ok, %{"foo" => "bar"}},
+        "#" => {:ok, %{"foo" => "bar"}},
+        "foo" => {:error, "invalid JSON pointer syntax"}
+      }
+  """
+  @spec batch_resolve(document, [pointer]) :: %{pointer => result}
+  defdelegate batch_resolve(document, pointers), to: __MODULE__.RFC6901
+
+  @doc """
   Resolves a relative JSON pointer starting from a specific location within a JSON document.
 
   Implements the Relative JSON Pointer specification (e.g. [draft-handrews-relative-json-pointer-01](https://tools.ietf.org/html/draft-handrews-relative-json-pointer-01)).

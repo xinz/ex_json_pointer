@@ -108,6 +108,41 @@ iex> ExJSONPointer.resolve(%{"a" =>%{"b" => %{"c" => [1, 2, 3]}}}, "#a")
 
 ```
 
+## Batch Resolve
+
+When you need to resolve multiple JSON pointers against the same document, you can use `batch_resolve/2`.
+
+This is especially useful when several pointers share common prefixes, because the implementation can reuse part of the traversal work internally. For sparse pointer sets with little shared structure, it will fall back to resolving pointers individually.
+
+```elixir
+iex> doc = %{
+...>   "users" => %{
+...>     "1" => %{
+...>       "profile" => %{"name" => "alice", "email" => "alice@example.com"},
+...>       "settings" => %{"theme" => "dark"}
+...>     }
+...>   }
+...> }
+iex> ExJSONPointer.batch_resolve(doc, ["/users/1/profile/name", "/users/1/profile/email", "/users/1/settings/theme"])
+%{
+  "/users/1/profile/name" => {:ok, "alice"},
+  "/users/1/profile/email" => {:ok, "alice@example.com"},
+  "/users/1/settings/theme" => {:ok, "dark"}
+}
+```
+
+It also reports errors per pointer in the returned map:
+
+```elixir
+iex> ExJSONPointer.batch_resolve(%{"foo" => "bar"}, ["", "#", "foo", "/missing"])
+%{
+  "" => {:ok, %{"foo" => "bar"}},
+  "#" => {:ok, %{"foo" => "bar"}},
+  "foo" => {:error, "invalid JSON pointer syntax"},
+  "/missing" => {:error, "not found"}
+}
+```
+
 ## Relative JSON Pointer
 
 This library also supports [Relative JSON Pointer](https://datatracker.ietf.org/doc/html/draft-bhutton-relative-json-pointer-00) of the JSON Schema Specification draft-2020-12 which allows you to reference values relative to a specific location within a JSON document.
