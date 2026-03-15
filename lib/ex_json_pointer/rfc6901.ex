@@ -191,7 +191,6 @@ defmodule ExJSONPointer.RFC6901 do
     @error_invalid_syntax
   end
 
-  defp start_process(document, ""), do: document
   defp start_process(document, input) when is_binary(input) do
     case split_json_pointer(input) do
       {:error, _} = error ->
