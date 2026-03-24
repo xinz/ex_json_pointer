@@ -22,17 +22,16 @@ defmodule ExJSONPointer.RFC6901 do
   def valid_json_pointer?(_), do: false
 
   def batch_resolve(document, pointers) when is_list(pointers) do
-    if should_prefer_fallback?(pointers) do
-      fallback_batch_to_resolve(document, pointers)
-    else
-      {results, groups, total, unique_first_tokens} =
-         classify_batch_pointers(document, pointers, {%{}, %{}, 0, 0})
-
+    with false <- should_prefer_fallback?(pointers),
+         {results, groups, total, unique_first_tokens} <- classify_batch_pointers(document, pointers, {%{}, %{}, 0, 0}) do
       if should_use_grouped_batch?(total, unique_first_tokens) do
         batch_process_groups(document, groups, results)
       else
         fallback_batch_to_resolve(document, groups, results)
       end
+    else
+      _ ->
+        fallback_batch_to_resolve(document, pointers)
     end
   end
 
@@ -51,26 +50,25 @@ defmodule ExJSONPointer.RFC6901 do
   defp should_use_grouped_batch?(_total, _unique_first_tokens), do: false
 
   defp should_prefer_fallback?(pointers) do
-    pointer_count = length(pointers)
+    calc_unique_to_fallback?(pointers, length(pointers), 16)
+  end
 
-    if pointer_count <= 8 do
-      false
-    else
-      sample_size = min(pointer_count, 16)
+  defp calc_unique_to_fallback?(_pointers, pointers_size, _sample_size)
+       when pointers_size <= 8, do: false
 
-      unique_first_tokens =
-        pointers
-        |> Enum.take(sample_size)
-        |> Enum.reduce(MapSet.new(), fn pointer, acc ->
-          case split_json_pointer(pointer, [parts: 3]) do
-            [first | _rest] -> MapSet.put(acc, first)
-            _ -> acc
-          end
-        end)
-        |> MapSet.size()
-
-      unique_first_tokens * 4 >= sample_size * 3
-    end
+  defp calc_unique_to_fallback?(pointers, pointers_size, sample_size) do
+    sample_size = min(pointers_size, sample_size)
+    unique_first_tokens =
+      pointers
+      |> Enum.take(sample_size)
+      |> Enum.reduce(MapSet.new(), fn pointer, acc ->
+        case split_json_pointer(pointer, [parts: 3]) do
+          [first | _rest] -> MapSet.put(acc, first)
+          _ -> acc
+        end
+      end)
+      |> MapSet.size()
+    unique_first_tokens * 4 >= sample_size * 3
   end
 
   defp classify_batch_pointers(_document, [], acc), do: acc

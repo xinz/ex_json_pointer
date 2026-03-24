@@ -96,8 +96,8 @@ Benchee.run(
   },
   inputs: %{
     "Small Doc & Few Pointers" => {doc, pointers_small},
-    "Large Doc & Many Pointers" => {large_doc, pointers_large},
-    "Shared Prefix Doc & Many Pointers" => {shared_prefix_doc, pointers_shared_prefix}
+    "Large Doc & Many Scattered Pointers" => {large_doc, pointers_large},
+    "Shared Prefix Doc & Many Shared Pointers" => {shared_prefix_doc, pointers_shared_prefix}
   },
   time: 3,
   memory_time: 2
