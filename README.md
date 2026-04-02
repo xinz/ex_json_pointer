@@ -143,6 +143,58 @@ iex> ExJSONPointer.batch_resolve(%{"foo" => "bar"}, ["", "#", "foo", "/missing"]
 }
 ```
 
+If you do not need the full `%{pointer => result}` map, you can use `batch_resolve_reduce/4` to reduce results directly into your own accumulator. This can be a better fit when you want to count matches, collect only successful values, or stream results into a custom structure while avoiding an additional result map allocation.
+
+```elixir
+iex> doc = %{
+...>   "users" => %{
+...>     "1" => %{
+...>       "profile" => %{"name" => "alice", "email" => "alice@example.com"}
+...>     }
+...>   }
+...> }
+iex> ExJSONPointer.batch_resolve_reduce(
+...>   doc,
+...>   ["/users/1/profile/name", "/users/1/profile/email", "/users/2/profile/name"],
+...>   %{},
+...>   fn pointer, result, acc ->
+...>     case result do
+...>       {:ok, value} -> Map.put(acc, pointer, value)
+...>       {:error, _reason} -> acc
+...>     end
+...>   end
+...> )
+%{
+  "/users/1/profile/name" => "alice",
+  "/users/1/profile/email" => "alice@example.com"
+}
+```
+
+You can also use it for lightweight aggregations when you only care about derived information:
+
+```elixir
+iex> doc = %{
+...>   "items" => [
+...>     %{"name" => "first"},
+...>     %{"name" => "second"}
+...>   ]
+...> }
+iex> ExJSONPointer.batch_resolve_reduce(
+...>   doc,
+...>   ["/items/0/name", "/items/1/name", "/items/2/name", "/items/1#"],
+...>   0,
+...>   fn _pointer, result, acc ->
+...>     case result do
+...>       {:ok, _value} -> acc + 1
+...>       {:error, _reason} -> acc
+...>     end
+...>   end
+...> )
+3
+```
+
+Use `batch_resolve/2` when you want the complete result map. Use `batch_resolve_reduce/4` when you want to process each result immediately into a custom accumulator.
+
 ## Relative JSON Pointer
 
 This library also supports [Relative JSON Pointer](https://datatracker.ietf.org/doc/html/draft-bhutton-relative-json-pointer-00) of the JSON Schema Specification draft-2020-12 which allows you to reference values relative to a specific location within a JSON document.

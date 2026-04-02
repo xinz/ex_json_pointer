@@ -101,4 +101,69 @@ defmodule ExJSONPointerBatchTest do
              "/items/1#/name" => {:error, "not found"}
            }
   end
+
+  test "batch_resolve_reduce/4 reduces only successful results into a map" do
+    doc = %{
+      "users" => %{
+        "1" => %{
+          "profile" => %{
+            "name" => "alice",
+            "email" => "alice@example.com"
+          }
+        }
+      }
+    }
+
+    assert ExJSONPointer.batch_resolve_reduce(
+             doc,
+             ["/users/1/profile/name", "/users/1/profile/email", "/users/2/profile/name"],
+             %{},
+             fn pointer, result, acc ->
+               case result do
+                 {:ok, value} -> Map.put(acc, pointer, value)
+                 {:error, _reason} -> acc
+               end
+             end
+           ) == %{
+             "/users/1/profile/name" => "alice",
+             "/users/1/profile/email" => "alice@example.com"
+           }
+  end
+
+  test "batch_resolve_reduce/4 can collect all results into a list" do
+    doc = %{"foo" => "bar"}
+
+    assert ExJSONPointer.batch_resolve_reduce(
+             doc,
+             ["", "#", "foo"],
+             [],
+             fn pointer, result, acc -> [{pointer, result} | acc] end
+           )
+           |> Enum.reverse() == [
+             {"", {:ok, %{"foo" => "bar"}}},
+             {"#", {:ok, %{"foo" => "bar"}}},
+             {"foo", {:error, "invalid JSON pointer syntax"}}
+           ]
+  end
+
+  test "batch_resolve_reduce/4 can count successful pointer resolutions" do
+    doc = %{
+      "items" => [
+        %{"name" => "first"},
+        %{"name" => "second"}
+      ]
+    }
+
+    assert ExJSONPointer.batch_resolve_reduce(
+             doc,
+             ["/items/0/name", "/items/1/name", "/items/2/name", "/items/1#"],
+             0,
+             fn _pointer, result, acc ->
+               case result do
+                 {:ok, _value} -> acc + 1
+                 {:error, _reason} -> acc
+               end
+             end
+           ) == 3
+  end
 end

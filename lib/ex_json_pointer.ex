@@ -23,6 +23,18 @@ defmodule ExJSONPointer do
   """
   @type result :: {:ok, term()} | {:error, String.t()}
 
+  @typedoc """
+  A reducer callback used by `batch_resolve_reduce/4`.
+
+  It receives:
+  1. The original JSON pointer string.
+  2. The result produced for that pointer.
+  3. The current accumulator.
+
+  It must return the updated accumulator.
+  """
+  @type batch_reduce_fun(acc) :: (pointer, result, acc -> acc)
+
   @doc """
   Resolves a value from a JSON document using a JSON Pointer.
 
@@ -104,6 +116,64 @@ defmodule ExJSONPointer do
   """
   @spec batch_resolve(document, [pointer]) :: %{pointer => result}
   defdelegate batch_resolve(document, pointers), to: __MODULE__.RFC6901
+
+  @doc """
+  Resolves multiple JSON Pointers against a JSON document and reduces the results
+  with a callback.
+
+  This function is useful when you want to process each batch result directly
+  into a custom accumulator instead of always materializing the full
+  `%{pointer => result}` map returned by `batch_resolve/2`.
+
+  The reducer callback receives:
+  1. The original pointer string.
+  2. The result for that pointer.
+  3. The current accumulator.
+
+  It must return the updated accumulator.
+
+  ## Parameters
+
+  - `document`: The JSON document to be processed.
+  - `pointers`: A list of JSON pointer strings.
+  - `acc`: The initial accumulator.
+  - `reduce_fun`: A reducer callback invoked for each pointer result.
+
+  ## Examples
+
+      iex> doc = %{"users" => %{"1" => %{"profile" => %{"name" => "alice", "email" => "alice@example.com"}}}}
+      iex> ExJSONPointer.batch_resolve_reduce(
+      ...>   doc,
+      ...>   ["/users/1/profile/name", "/users/1/profile/email", "/users/2/profile/name"],
+      ...>   %{},
+      ...>   fn pointer, result, acc ->
+      ...>     case result do
+      ...>       {:ok, value} -> Map.put(acc, pointer, value)
+      ...>       {:error, _reason} -> acc
+      ...>     end
+      ...>   end
+      ...> )
+      %{
+        "/users/1/profile/name" => "alice",
+        "/users/1/profile/email" => "alice@example.com"
+      }
+
+      iex> doc = %{"foo" => "bar"}
+      iex> ExJSONPointer.batch_resolve_reduce(
+      ...>   doc,
+      ...>   ["", "#", "foo"],
+      ...>   [],
+      ...>   fn pointer, result, acc -> [{pointer, result} | acc] end
+      ...> )
+      ...> |> Enum.reverse()
+      [
+        {"", {:ok, %{"foo" => "bar"}}},
+        {"#", {:ok, %{"foo" => "bar"}}},
+        {"foo", {:error, "invalid JSON pointer syntax"}}
+      ]
+  """
+  @spec batch_resolve_reduce(document, [pointer], acc, batch_reduce_fun(acc)) :: acc when acc: term()
+  defdelegate batch_resolve_reduce(document, pointers, acc, reduce_fun), to: __MODULE__.RFC6901
 
   @doc """
   Resolves a relative JSON pointer starting from a specific location within a JSON document.
