@@ -279,24 +279,35 @@ defmodule ExJSONPointer do
   defdelegate decode_path(pointer), to: __MODULE__.RFC6901
 
   @doc """
-  Encodes a tokenized path as the canonical JSON string representation of a JSON Pointer.
+  Encodes a tokenized path as a JSON Pointer string using the requested surface format.
 
-  Each token is escaped according to RFC 6901. Integer tokens are accepted as a
-  convenience and are stringified in the output.
+  Supported formats are:
+
+  - `"json_string"` - returns the JSON string representation such as `"/a/b"`
+  - `"uri_fragment"` - returns the URI fragment identifier representation such as `"#/a/b"`
+
+  The `opts` argument defaults to `[format: "json_string"]`.
 
   ## Examples
-
       iex> ExJSONPointer.encode_path(["$defs", "name"])
       "/$defs/name"
 
-      iex> ExJSONPointer.encode_path(["a/b", "c~d", 0])
-      "/a~1b/c~0d/0"
+      iex> ExJSONPointer.encode_path(["$defs", "name"], format: "json_string")
+      "/$defs/name"
 
-      iex> ExJSONPointer.encode_path([])
-      ""
+      iex> ExJSONPointer.encode_path(["$defs", "name"], format: "uri_fragment")
+      "#/$defs/name"
+
+      iex> ExJSONPointer.encode_path(["a b", "c%d"], format: "uri_fragment")
+      "#/a%20b/c%25d"
+
+      iex> ExJSONPointer.encode_path([], format: "uri_fragment")
+      "#"
   """
-  @spec encode_path([String.t() | integer()]) :: String.t()
-  defdelegate encode_path(tokens), to: __MODULE__.RFC6901
+  @spec encode_path([String.t() | integer()], keyword()) :: String.t()
+  def encode_path(tokens, opts \\ [format: "json_string"]) do
+    __MODULE__.RFC6901.encode_path(tokens, opts)
+  end
 
   @doc """
   Validates if the given string follows the JSON Pointer format (RFC 6901, section 5).

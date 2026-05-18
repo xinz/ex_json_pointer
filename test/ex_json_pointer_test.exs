@@ -173,20 +173,47 @@ defmodule ExJSONPointerTest do
     end
   end
 
-  describe "encode_path/1" do
-    test "encodes path tokens as canonical JSON string pointers" do
-      assert ExJSONPointer.encode_path([]) == ""
-      assert ExJSONPointer.encode_path(["$defs", "name"]) == "/$defs/name"
-      assert ExJSONPointer.encode_path(["a/b", "c~d", 0]) == "/a~1b/c~0d/0"
-      assert ExJSONPointer.encode_path([""]) == "/"
+  describe "encode_path/2" do
+    test "uses json_string output by default" do
+      assert ExJSONPointer.encode_path([]) ==
+               ExJSONPointer.encode_path([], format: "json_string")
+
+      assert ExJSONPointer.encode_path(["$defs", "name"]) ==
+               ExJSONPointer.encode_path(["$defs", "name"], format: "json_string")
+
+      assert ExJSONPointer.encode_path(["a/b", "c~d", 0], format: "json_string") == "/a~1b/c~0d/0"
+      assert ExJSONPointer.encode_path([""], format: "json_string") == "/"
     end
 
-    test "round trips with decode_path/1" do
+    test "round trips json_string output with decode_path/1" do
       path = ["$defs", "a/b", "c~d", "0"]
 
       assert path
-             |> ExJSONPointer.encode_path()
+             |> ExJSONPointer.encode_path(format: "json_string")
              |> ExJSONPointer.decode_path() == {:ok, path}
+    end
+
+    test "supports uri_fragment output" do
+      assert ExJSONPointer.encode_path([], format: "uri_fragment") == "#"
+      assert ExJSONPointer.encode_path(["$defs", "name"], format: "uri_fragment") == "#/$defs/name"
+      assert ExJSONPointer.encode_path(["a/b", "c~d", 0], format: "uri_fragment") == "#/a~1b/c~0d/0"
+      assert ExJSONPointer.encode_path(["a b", "c%d", "k\"l"], format: "uri_fragment") == "#/a%20b/c%25d/k%22l"
+    end
+
+    test "round trips uri_fragment output with decode_path/1" do
+      path = ["$defs", "a/b", "c~d", "a b", "c%d", "0"]
+
+      assert path
+             |> ExJSONPointer.encode_path(format: "uri_fragment")
+             |> ExJSONPointer.decode_path() == {:ok, path}
+    end
+
+    test "raises for an unsupported format" do
+      assert_raise ArgumentError,
+                   ~r/expected :format to be \"json_string\" or \"uri_fragment\"/,
+                   fn ->
+                     ExJSONPointer.encode_path(["a"], format: "unknown")
+                   end
     end
   end
 

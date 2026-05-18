@@ -51,10 +51,21 @@ defmodule ExJSONPointer.RFC6901 do
 
   def decode_path(_pointer), do: @error_invalid_syntax
 
-  def encode_path(tokens) when is_list(tokens) do
-    case Enum.map(tokens, &escape_token/1) do
-      [] -> ""
-      escaped_tokens -> "/" <> Enum.join(escaped_tokens, "/")
+  def encode_path(tokens, opts \\ [format: "json_string"])
+
+  def encode_path(tokens, opts) when is_list(tokens) and is_list(opts) do
+    escaped_tokens = Enum.map(tokens, &escape_token/1)
+
+    case Keyword.get(opts, :format, "json_string") do
+      "json_string" ->
+        encode_json_string_path(escaped_tokens)
+
+      "uri_fragment" ->
+        encode_uri_fragment_path(escaped_tokens)
+
+      format ->
+        raise ArgumentError,
+              "expected :format to be \"json_string\" or \"uri_fragment\", got: #{inspect(format)}"
     end
   end
 
@@ -263,6 +274,23 @@ defmodule ExJSONPointer.RFC6901 do
   defp escape_token(token) do
     raise ArgumentError, "path tokens must be strings or integers, got: #{inspect(token)}"
   end
+
+  defp encode_json_string_path([]), do: ""
+  defp encode_json_string_path(escaped_tokens), do: "/" <> Enum.join(escaped_tokens, "/")
+
+  defp encode_uri_fragment_path([]), do: "#"
+
+  defp encode_uri_fragment_path(escaped_tokens) do
+    encoded_tokens = Enum.map(escaped_tokens, &encode_uri_fragment_token/1)
+    "#/" <> Enum.join(encoded_tokens, "/")
+  end
+
+  defp encode_uri_fragment_token(token) do
+    URI.encode(token, &uri_fragment_char_unescaped?/1)
+  end
+
+  defp uri_fragment_char_unescaped?(?#), do: false
+  defp uri_fragment_char_unescaped?(char), do: URI.char_unescaped?(char)
 
   defp do_resolve(document, "/" <> _pointer_str = pointer) do
     start_process(document, pointer)

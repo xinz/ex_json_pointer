@@ -115,7 +115,7 @@ iex> ExJSONPointer.resolve(%{"a" =>%{"b" => %{"c" => [1, 2, 3]}}}, "#a")
 
 ## Path encode/decode helpers
 
-Use `decode_path/1` when you want to convert a JSON Pointer string into a tokenized path, and use `encode_path/1` when you want to build a canonical JSON string representation from path tokens.
+Use `decode_path/1` when you want to convert a JSON Pointer string into a tokenized path. Use `encode_path/2` to encode tokens back into a pointer string, its `opts` argument defaults to `[format: "json_string"]`.
 
 ```elixir
 iex> ExJSONPointer.decode_path("#/$defs/name")
@@ -130,11 +130,20 @@ iex> ExJSONPointer.decode_path("#")
 iex> ExJSONPointer.encode_path(["a/b", "c~d", 0])
 "/a~1b/c~0d/0"
 
-iex> ExJSONPointer.encode_path([])
-""
+iex> ExJSONPointer.encode_path(["a/b", "c~d", 0], format: "json_string")
+"/a~1b/c~0d/0"
+
+iex> ExJSONPointer.encode_path(["$defs", "name"], format: "uri_fragment")
+"#/$defs/name"
+
+iex> ExJSONPointer.encode_path(["a b", "c%d"], format: "uri_fragment")
+"#/a%20b/c%25d"
+
+iex> ExJSONPointer.encode_path([], format: "uri_fragment")
+"#"
 ```
 
-`decode_path/1` accepts both the JSON string and URI fragment identifier representations. `encode_path/1` returns the canonical JSON string representation.
+`decode_path/1` accepts both the JSON string and URI fragment identifier representations. `encode_path/2` supports `format: "json_string" | "uri_fragment"` and defaults to `[format: "json_string"]`.
 
 ## Batch Resolve
 
