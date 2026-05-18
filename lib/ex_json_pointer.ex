@@ -252,6 +252,53 @@ defmodule ExJSONPointer do
   defdelegate resolve_while(document, pointer, acc, resolve_fun), to: __MODULE__.RFC6901
 
   @doc """
+  Decodes a JSON Pointer string into a tokenized path.
+
+  This helper accepts both JSON Pointer surface syntaxes supported by the library:
+
+  - the JSON string representation (`""`, `"/..."`)
+  - the URI fragment identifier representation (`"#"`, `"#/..."`)
+
+  Decoded reference tokens are always returned as strings.
+
+  ## Examples
+
+      iex> ExJSONPointer.decode_path("#/$defs/name")
+      {:ok, ["$defs", "name"]}
+
+      iex> ExJSONPointer.decode_path("/items/0")
+      {:ok, ["items", "0"]}
+
+      iex> ExJSONPointer.decode_path("#")
+      {:ok, []}
+
+      iex> ExJSONPointer.decode_path("foo")
+      {:error, "invalid JSON pointer syntax"}
+  """
+  @spec decode_path(String.t()) :: {:ok, [String.t()]} | {:error, String.t()}
+  defdelegate decode_path(pointer), to: __MODULE__.RFC6901
+
+  @doc """
+  Encodes a tokenized path as the canonical JSON string representation of a JSON Pointer.
+
+  Each token is escaped according to RFC 6901. Integer tokens are accepted as a
+  convenience and are stringified in the output.
+
+  ## Examples
+
+      iex> ExJSONPointer.encode_path(["$defs", "name"])
+      "/$defs/name"
+
+      iex> ExJSONPointer.encode_path(["a/b", "c~d", 0])
+      "/a~1b/c~0d/0"
+
+      iex> ExJSONPointer.encode_path([])
+      ""
+  """
+  @spec encode_path([String.t() | integer()]) :: String.t()
+  defdelegate encode_path(tokens), to: __MODULE__.RFC6901
+
+  @doc """
   Validates if the given string follows the JSON Pointer format (RFC 6901, section 5).
 
   According to JSON Schema specification (draft 2020-12), the `json-pointer` format

@@ -14,6 +14,50 @@ defmodule ExJSONPointer.RFC6901 do
     do_resolve(document, pointer)
   end
 
+  def decode_path(""), do: {:ok, []}
+  def decode_path("#"), do: {:ok, []}
+
+  def decode_path("/" <> _ = pointer) do
+    if valid_json_pointer?(pointer) do
+      {:ok,
+       pointer
+       |> String.split("/")
+       |> remove_first_item_if_empty_str()
+       |> Enum.map(&unescape/1)}
+    else
+      @error_invalid_syntax
+    end
+  end
+
+  def decode_path("#/" <> _ = pointer) do
+    case URI.new(pointer) do
+      {:ok, %URI{fragment: fragment}} ->
+        decoded_pointer = URI.decode(fragment)
+
+        if valid_json_pointer?(decoded_pointer) do
+          {:ok,
+           decoded_pointer
+           |> String.split("/")
+           |> remove_first_item_if_empty_str()
+           |> Enum.map(&unescape/1)}
+        else
+          @error_invalid_syntax
+        end
+
+      {:error, _} ->
+        @error_invalid_syntax
+    end
+  end
+
+  def decode_path(_pointer), do: @error_invalid_syntax
+
+  def encode_path(tokens) when is_list(tokens) do
+    case Enum.map(tokens, &escape_token/1) do
+      [] -> ""
+      escaped_tokens -> "/" <> Enum.join(escaped_tokens, "/")
+    end
+  end
+
   def valid_json_pointer?(""), do: true
   def valid_json_pointer?("/"), do: true
   def valid_json_pointer?("/" <> _ = pointer) do
@@ -204,6 +248,22 @@ defmodule ExJSONPointer.RFC6901 do
     end)
   end
 
+  defp escape_token(token) when is_binary(token) do
+    token
+    |> String.replace("~", "~0")
+    |> String.replace("/", "~1")
+  end
+
+  defp escape_token(token) when is_integer(token) do
+    token
+    |> Integer.to_string()
+    |> escape_token()
+  end
+
+  defp escape_token(token) do
+    raise ArgumentError, "path tokens must be strings or integers, got: #{inspect(token)}"
+  end
+
   defp do_resolve(document, "/" <> _pointer_str = pointer) do
     start_process(document, pointer)
   end
@@ -368,7 +428,7 @@ defmodule ExJSONPointer.RFC6901 do
     # each prefixed with a forward slash character "/" (%x2F).
     case URI.new(pointer) do
       {:ok, uri} ->
-        uri.fragment |> URI.decode_www_form() |> String.split("/", opts) |> remove_first_item_if_empty_str()
+        uri.fragment |> URI.decode() |> String.split("/", opts) |> remove_first_item_if_empty_str()
 
       {:error, _} ->
         @error_invalid_syntax

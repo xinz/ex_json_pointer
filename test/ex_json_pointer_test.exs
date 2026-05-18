@@ -154,9 +154,49 @@ defmodule ExJSONPointerTest do
     end
   end
 
+  describe "decode_path/1" do
+    test "decodes JSON string and URI fragment representations" do
+      assert ExJSONPointer.decode_path("") == {:ok, []}
+      assert ExJSONPointer.decode_path("#") == {:ok, []}
+      assert ExJSONPointer.decode_path("/$defs/name") == {:ok, ["$defs", "name"]}
+      assert ExJSONPointer.decode_path("#/items/0") == {:ok, ["items", "0"]}
+      assert ExJSONPointer.decode_path("/a~1b/m~0n") == {:ok, ["a/b", "m~n"]}
+      assert ExJSONPointer.decode_path("#/c%25d/%20") == {:ok, ["c%d", " "]}
+      assert ExJSONPointer.decode_path("#/a+b") == {:ok, ["a+b"]}
+    end
+
+    test "returns an error for invalid syntax" do
+      assert ExJSONPointer.decode_path("foo") == {:error, "invalid JSON pointer syntax"}
+      assert ExJSONPointer.decode_path("#foo") == {:error, "invalid JSON pointer syntax"}
+      assert ExJSONPointer.decode_path("/foo/~2") == {:error, "invalid JSON pointer syntax"}
+      assert ExJSONPointer.decode_path("#/foo/~2") == {:error, "invalid JSON pointer syntax"}
+    end
+  end
+
+  describe "encode_path/1" do
+    test "encodes path tokens as canonical JSON string pointers" do
+      assert ExJSONPointer.encode_path([]) == ""
+      assert ExJSONPointer.encode_path(["$defs", "name"]) == "/$defs/name"
+      assert ExJSONPointer.encode_path(["a/b", "c~d", 0]) == "/a~1b/c~0d/0"
+      assert ExJSONPointer.encode_path([""]) == "/"
+    end
+
+    test "round trips with decode_path/1" do
+      path = ["$defs", "a/b", "c~d", "0"]
+
+      assert path
+             |> ExJSONPointer.encode_path()
+             |> ExJSONPointer.decode_path() == {:ok, path}
+    end
+  end
+
   test "invalid syntax" do
     assert ExJSONPointer.resolve(@nesting_data, "a/b") ==
              {:error, "invalid JSON pointer syntax"}
+  end
+
+  test "URI fragment resolution preserves plus characters" do
+    assert ExJSONPointer.resolve(%{"a+b" => 1, "a b" => 2}, "#/a+b") == {:ok, 1}
   end
 
   test "the ref token is exceeded the index of array" do
