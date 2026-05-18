@@ -53,20 +53,25 @@ defmodule ExJSONPointer.RFC6901 do
 
   def encode_path(tokens, opts \\ [format: "json_string"])
 
+  def encode_path([], opts) do
+    do_encode_path([], Keyword.get(opts, :format))
+  end
+
   def encode_path(tokens, opts) when is_list(tokens) and is_list(opts) do
-    escaped_tokens = Enum.map(tokens, &escape_token/1)
+    tokens
+    |> Enum.map(&escape_token/1)
+    |> do_encode_path(Keyword.get(opts, :format))
+  end
 
-    case Keyword.get(opts, :format, "json_string") do
-      "json_string" ->
-        encode_json_string_path(escaped_tokens)
-
-      "uri_fragment" ->
-        encode_uri_fragment_path(escaped_tokens)
-
-      format ->
-        raise ArgumentError,
-              "expected :format to be \"json_string\" or \"uri_fragment\", got: #{inspect(format)}"
-    end
+  defp do_encode_path(tokens, "json_string") do
+    encode_json_string_path(tokens)
+  end
+  defp do_encode_path(tokens, "uri_fragment") do
+    encode_uri_fragment_path(tokens)
+  end
+  defp do_encode_path(_tokens, format) do
+    raise ArgumentError,
+      "expected :format to be \"json_string\" or \"uri_fragment\", got: #{inspect(format)}"
   end
 
   def valid_json_pointer?(""), do: true
