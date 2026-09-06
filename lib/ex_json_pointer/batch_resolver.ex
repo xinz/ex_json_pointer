@@ -141,7 +141,8 @@ defmodule ExJSONPointer.BatchResolver do
   defp batch_process_groups(document, groups, acc, reduce_fun) when is_list(document) do
     if enough_indexed_list_groups?(groups, 8) do
       # Canonical indexes share one forward traversal; aliases and negatives use the compatibility path.
-      {indexed_groups, acc} = index_list_groups(document, groups, {%{}, acc}, reduce_fun)
+      {indexed_groups, acc} = index_list_groups(document, groups, {[], acc}, reduce_fun)
+      indexed_groups = :lists.keysort(1, indexed_groups)
       traverse_indexed_groups(document, 0, indexed_groups, acc, reduce_fun)
     else
       batch_process_groups_independently(document, groups, acc, reduce_fun)
@@ -230,7 +231,7 @@ defmodule ExJSONPointer.BatchResolver do
     Enum.reduce(groups, acc, fn {token, entries}, {indexed_groups, inner_acc} ->
       case canonical_index(token) do
         {:ok, index} ->
-          {Map.put(indexed_groups, index, entries), inner_acc}
+          {[{index, entries} | indexed_groups], inner_acc}
 
         :error ->
           inner_acc = batch_process_child_group(document, token, entries, inner_acc, reduce_fun)
@@ -239,9 +240,7 @@ defmodule ExJSONPointer.BatchResolver do
     end)
   end
 
-  defp traverse_indexed_groups(_document, _index, indexed_groups, acc, _reduce_fun)
-       when map_size(indexed_groups) == 0,
-       do: acc
+  defp traverse_indexed_groups(_document, _index, [], acc, _reduce_fun), do: acc
 
   defp traverse_indexed_groups([], _index, indexed_groups, acc, reduce_fun) do
     Enum.reduce(indexed_groups, acc, fn {_index, entries}, inner_acc ->
@@ -249,15 +248,19 @@ defmodule ExJSONPointer.BatchResolver do
     end)
   end
 
-  defp traverse_indexed_groups([value | rest], index, indexed_groups, acc, reduce_fun) do
-    case Map.pop(indexed_groups, index) do
-      {nil, indexed_groups} ->
-        traverse_indexed_groups(rest, index + 1, indexed_groups, acc, reduce_fun)
+  defp traverse_indexed_groups(
+         [value | rest],
+         index,
+         [{index, entries} | indexed_groups],
+         acc,
+         reduce_fun
+       ) do
+    acc = batch_process_entries(value, entries, acc, reduce_fun)
+    traverse_indexed_groups(rest, index + 1, indexed_groups, acc, reduce_fun)
+  end
 
-      {entries, indexed_groups} ->
-        acc = batch_process_entries(value, entries, acc, reduce_fun)
-        traverse_indexed_groups(rest, index + 1, indexed_groups, acc, reduce_fun)
-    end
+  defp traverse_indexed_groups([_value | rest], index, indexed_groups, acc, reduce_fun) do
+    traverse_indexed_groups(rest, index + 1, indexed_groups, acc, reduce_fun)
   end
 
   defp canonical_index(token) do

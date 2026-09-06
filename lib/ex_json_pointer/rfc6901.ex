@@ -190,14 +190,39 @@ defmodule ExJSONPointer.RFC6901 do
     value_to_token(document, ref_token)
   end
 
-  def process(document, [ref_token | rest]) when is_list(document) or is_map(document) do
-    case fetch_child(document, ref_token) do
-      {:ok, value} -> process(value, rest)
-      {:error, _} = error -> error
+  def process(document, [ref_token | rest]) when is_map(document) do
+    key = unescape(ref_token)
+
+    case document do
+      %{^key => value} -> process(value, rest)
+      %{} -> @error_not_found
+    end
+  end
+
+  def process(document, [ref_token | rest]) when is_list(document) do
+    case parse_index(ref_token) do
+      {:ok, index} when index >= 0 -> process_list_index(document, index, rest)
+      {:ok, index} -> process_negative_list_index(document, index, rest)
+      :error -> @error_not_found
     end
   end
 
   def process(_value, _ref_tokens), do: @error_not_found
+
+  defp process_list_index([value | _rest], 0, ref_tokens), do: process(value, ref_tokens)
+
+  defp process_list_index([_value | rest], index, ref_tokens) do
+    process_list_index(rest, index - 1, ref_tokens)
+  end
+
+  defp process_list_index([], _index, _ref_tokens), do: @error_not_found
+
+  defp process_negative_list_index(document, index, ref_tokens) do
+    case Enum.fetch(document, index) do
+      {:ok, value} -> process(value, ref_tokens)
+      :error -> @error_not_found
+    end
+  end
 
   @doc false
   def value_to_token(document, "") when is_map(document), do: find_value_by_token(document, "")
