@@ -1,4 +1,8 @@
-doc = %{
+Code.require_file("bench_support.exs", __DIR__)
+
+alias ExJSONPointer.BenchSupport
+
+small_doc = %{
   "a" => %{
     "b" => %{
       "c" => [1, 2, %{"d" => "target1"}],
@@ -6,20 +10,15 @@ doc = %{
     },
     "f" => [10, 20, 30, 40]
   },
-  "x" => %{
-    "y" => %{
-      "z" => "target3"
-    }
-  }
+  "x" => %{"y" => %{"z" => "target3"}}
 }
 
 large_doc =
-  Enum.reduce(1..1000, %{}, fn i, acc ->
-    Map.put(acc, "key_#{i}", %{
-      "nested_1" => %{
-        "nested_2" => [i, i * 2, %{"target" => "val_#{i}"}]
-      }
-    })
+  Enum.into(1..1_000, %{}, fn i ->
+    {
+      "key_#{i}",
+      %{"nested_1" => %{"nested_2" => [i, i * 2, %{"target" => "val_#{i}"}]}}
+    }
   end)
 
 shared_prefix_doc = %{
@@ -44,6 +43,19 @@ shared_prefix_doc = %{
       }
     end)
 }
+
+array_doc = %{
+  "items" =>
+    Enum.map(0..4_095, fn i ->
+      %{"id" => i, "value" => "value_#{i}", "metadata" => %{"even" => rem(i, 2) == 0}}
+    end)
+}
+
+input_order_doc =
+  Enum.into(1..12, %{}, fn group ->
+    fields = Enum.into(1..4, %{}, fn field -> {"field_#{field}", {group, field}} end)
+    {"group_#{group}", fields}
+  end)
 
 pointers_small = [
   "/a/b/c/2/d",
@@ -70,35 +82,72 @@ pointers_shared_prefix =
     ]
   end) ++ ["/users/999/profile/name"]
 
-Benchee.run(
-  %{
-    "Enum.into & resolve/2" => fn {d, p} ->
-      Enum.into(p, %{}, fn ptr -> {ptr, ExJSONPointer.resolve(d, ptr)} end)
-    end,
-    "group by first token" => fn {d, p} ->
-      grouped =
-        Enum.group_by(p, fn ptr ->
-          case String.split(ptr, "/", trim: true) do
-            [first | _] -> first
-            [] -> ""
-          end
-        end)
+high_index_pointers = [
+  "/items/1024/id",
+  "/items/2048/value",
+  "/items/3072/metadata/even",
+  "/items/4095/id",
+  "/items/4096/value"
+]
 
-      Enum.reduce(grouped, %{}, fn {_first, pointers}, acc ->
-        Enum.reduce(pointers, acc, fn ptr, inner_acc ->
-          Map.put(inner_acc, ptr, ExJSONPointer.resolve(d, ptr))
-        end)
+sibling_array_pointers =
+  Enum.map(4_064..4_095, fn index -> "/items/#{index}/value" end) ++
+    ["/items/4096/value"]
+
+adaptive_eight_pointers =
+  Enum.map(1..8, fn i -> "/key_#{i}/nested_1/nested_2/2/target" end)
+
+adaptive_nine_pointers =
+  Enum.map(1..9, fn i -> "/key_#{i}/nested_1/nested_2/2/target" end)
+
+shared_first_pointers =
+  for group <- 1..12, field <- 1..4 do
+    "/group_#{group}/field_#{field}"
+  end
+
+interleaved_pointers =
+  for field <- 1..4, group <- 1..12 do
+    "/group_#{group}/field_#{field}"
+  end
+
+jobs = %{
+  "direct resolve/2 per pointer" => fn {document, pointers} ->
+    Enum.into(pointers, %{}, fn pointer -> {pointer, ExJSONPointer.resolve(document, pointer)} end)
+  end,
+  "manual first-token grouping" => fn {document, pointers} ->
+    pointers
+    |> Enum.group_by(fn pointer ->
+      case String.split(pointer, "/", trim: true) do
+        [first | _] -> first
+        [] -> ""
+      end
+    end)
+    |> Enum.reduce(%{}, fn {_first, grouped_pointers}, acc ->
+      Enum.reduce(grouped_pointers, acc, fn pointer, inner_acc ->
+        Map.put(inner_acc, pointer, ExJSONPointer.resolve(document, pointer))
       end)
-    end,
-    "batch_resolve/2" => fn {d, p} ->
-      ExJSONPointer.batch_resolve(d, p)
-    end
-  },
-  inputs: %{
-    "Small Doc & Few Pointers" => {doc, pointers_small},
-    "Large Doc & Many Scattered Pointers" => {large_doc, pointers_large},
-    "Shared Prefix Doc & Many Shared Pointers" => {shared_prefix_doc, pointers_shared_prefix}
-  },
-  time: 3,
-  memory_time: 2
-)
+    end)
+  end,
+  "batch_resolve/2" => fn {document, pointers} ->
+    ExJSONPointer.batch_resolve(document, pointers)
+  end
+}
+
+inputs = %{
+  "small document / few pointers" => {small_doc, pointers_small},
+  "large document / scattered pointers" => {large_doc, pointers_large},
+  "shared map prefix" => {shared_prefix_doc, pointers_shared_prefix},
+  "high array indices" => {array_doc, high_index_pointers},
+  "high-index sibling array" => {array_doc, sibling_array_pointers},
+  "adaptive boundary / 8 scattered pointers" => {large_doc, adaptive_eight_pointers},
+  "adaptive boundary / 9 scattered pointers" => {large_doc, adaptive_nine_pointers},
+  "input order / shared prefixes first" => {input_order_doc, shared_first_pointers},
+  "input order / shared prefixes interleaved" => {input_order_doc, interleaved_pointers}
+}
+
+expected = fn _job_name, {document, pointers} ->
+  Enum.into(pointers, %{}, fn pointer -> {pointer, ExJSONPointer.resolve(document, pointer)} end)
+end
+
+BenchSupport.assert_jobs!("batch resolve", jobs, inputs, expected)
+Benchee.run(jobs, BenchSupport.options(inputs))

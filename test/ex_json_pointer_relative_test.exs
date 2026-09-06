@@ -68,4 +68,26 @@ defmodule ExJSONPointer.RelativeTest do
     assert ExJSONPointer.Relative.resolve(@data2, "/features/1/url", "3#") == {:error, "not found"}
     assert ExJSONPointer.Relative.resolve(@data2, "/features/1/url", "4") == {:error, "not found"}
   end
+
+  test "resolves existing nil values" do
+    document = %{"items" => [nil, %{"value" => nil}, nil]}
+
+    assert ExJSONPointer.Relative.resolve(document, "/items/0", "0") == {:ok, nil}
+    assert ExJSONPointer.Relative.resolve(document, "/items/1/value", "0") == {:ok, nil}
+    assert ExJSONPointer.Relative.resolve(document, "/items/1", "0+1") == {:ok, nil}
+    assert ExJSONPointer.Relative.resolve(document, "/items/1", "0+1#") == {:ok, 2}
+  end
+
+  test "preserves start-pointer error precedence" do
+    document = %{"items" => [1]}
+
+    assert ExJSONPointer.Relative.resolve(document, "/missing", "invalid") ==
+             {:error, "not found"}
+
+    assert ExJSONPointer.Relative.resolve(document, "invalid", "invalid") ==
+             {:error, "invalid JSON pointer syntax"}
+
+    assert ExJSONPointer.Relative.resolve(document, "/items/0", "invalid") ==
+             {:error, "invalid relative JSON pointer syntax"}
+  end
 end
