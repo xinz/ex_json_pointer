@@ -1,7 +1,7 @@
 %{
-  "benchee": {:hex, :benchee, "1.5.0", "4d812c31d54b0ec0167e91278e7de3f596324a78a096fd3d0bea68bb0c513b10", [:mix], [{:deep_merge, "~> 1.0", [hex: :deep_merge, repo: "hexpm", optional: false]}, {:statistex, "~> 1.1", [hex: :statistex, repo: "hexpm", optional: false]}, {:table, "~> 0.1.0", [hex: :table, repo: "hexpm", optional: true]}], "hexpm", "5b075393aea81b8ae74eadd1c28b1d87e8a63696c649d8293db7c4df3eb67535"},
-  "deep_merge": {:hex, :deep_merge, "1.0.0", "b4aa1a0d1acac393bdf38b2291af38cb1d4a52806cf7a4906f718e1feb5ee961", [:mix], [], "hexpm", "ce708e5f094b9cd4e8f2be4f00d2f4250c4095be93f8cd6d018c753894885430"},
+  "benchee": {:hex, :benchee, "1.5.1", "b95cbc36c4b98969a5c592a246e171041eb683c56bad1cb4f49a3b081ba66087", [:mix], [{:deep_merge, "~> 1.0", [hex: :deep_merge, repo: "hexpm", optional: false]}, {:statistex, "~> 1.1", [hex: :statistex, repo: "hexpm", optional: false]}, {:table, "~> 0.1.0", [hex: :table, repo: "hexpm", optional: true]}], "hexpm", "a539301f8dfd4efc5c5123bfb9d47ebde20092a863a5b5b16c2a60d2243dfce7"},
+  "deep_merge": {:hex, :deep_merge, "1.0.2", "476aa7ea61c54de96220051b998d893869069094da65b96101aebf79416f8a1e", [:mix], [], "hexpm", "737a53cdc9758fedbb608bdc213969e65729466c4ef3cd8e8726d0335dff116c"},
   "json_pointer": {:hex, :json_pointer, "0.1.0", "9a2426436c26cc81d5cebcc98a4e6272f1cdf834a1507748ab4171168269635f", [:mix], [], "hexpm", "d0737bc0d613e069f08ea22cba76df55ad85bd3ae378aad48d588f03b2fd6dae"},
   "odgn_json_pointer": {:hex, :odgn_json_pointer, "3.1.0", "be81198ad8c9bce01fc872d6400d88a4a55ce711f7c8838e1166bd21f736d29a", [:mix], [], "hexpm", "85730306bb2e5796c993813f35e9bafeb561526f5e80a517793c33d1635ade94"},
-  "statistex": {:hex, :statistex, "1.1.0", "7fec1eb2f580a0d2c1a05ed27396a084ab064a40cfc84246dbfb0c72a5c761e5", [:mix], [], "hexpm", "f5950ea26ad43246ba2cce54324ac394a4e7408fdcf98b8e230f503a0cba9cf5"},
+  "statistex": {:hex, :statistex, "1.1.1", "73612aa7f79e53c30569be065fd121e380f1cf57bc4c2da5b41be9246da18df9", [:mix], [], "hexpm", "310c4b49b34adf683de3103639006bed233ab54c08a4add65a531448e653857c"},
 }
