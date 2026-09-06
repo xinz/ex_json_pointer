@@ -1,4 +1,7 @@
-defmodule ExJSONPointer do
+# Frozen benchmark snapshot from e5567ca482ff6f260369db071abcd20e3a4d3845.
+# Only the module namespace was changed to avoid collisions with the updated code.
+
+defmodule ExJSONPointerBefore do
   @external_resource readme = Path.join([__DIR__, "../README.md"])
   @moduledoc File.read!(readme)
              |> String.split("<!-- MDOC !-->")
@@ -15,11 +18,6 @@ defmodule ExJSONPointer do
   a URI Fragment Identifier Representation (starting with '#').
   """
   @type pointer :: String.t()
-
-  @typedoc """
-  A parsed JSON Pointer that can be reused without reparsing its source string.
-  """
-  @type compiled_pointer :: ExJSONPointer.Compiled.t()
 
   @typedoc """
   The result of resolving a JSON Pointer:
@@ -53,43 +51,15 @@ defmodule ExJSONPointer do
   ## Examples
 
       iex> doc = %{"foo" => %{"bar" => "baz"}}
-      iex> ExJSONPointer.resolve(doc, "/foo/bar")
+      iex> ExJSONPointerBefore.resolve(doc, "/foo/bar")
       {:ok, "baz"}
-      iex> ExJSONPointer.resolve(doc, "/foo/baz")
+      iex> ExJSONPointerBefore.resolve(doc, "/foo/baz")
       {:error, "not found"}
-      iex> ExJSONPointer.resolve(doc, "##foo")
+      iex> ExJSONPointerBefore.resolve(doc, "##foo")
       {:error, "invalid JSON pointer syntax"}
   """
   @spec resolve(document, pointer) :: result
   defdelegate resolve(document, pointer), to: __MODULE__.RFC6901
-
-  @doc """
-  Parses a JSON Pointer once so it can be resolved repeatedly.
-
-  Compiling is useful when the same pointer is applied to many documents. It
-  preserves the JSON-string and URI-fragment semantics of `resolve/2` while
-  avoiding repeated splitting, URI decoding, and token-list allocation.
-
-  ## Examples
-
-      iex> {:ok, pointer} = ExJSONPointer.compile("#/users/0/name")
-      iex> ExJSONPointer.resolve_compiled(%{"users" => [%{"name" => "alice"}]}, pointer)
-      {:ok, "alice"}
-
-      iex> ExJSONPointer.compile("#users/0/name")
-      {:error, "invalid JSON pointer syntax"}
-  """
-  @spec compile(pointer) :: {:ok, compiled_pointer} | {:error, String.t()}
-  defdelegate compile(pointer), to: __MODULE__.RFC6901
-
-  @doc """
-  Resolves a previously compiled JSON Pointer against a document.
-
-  Use this function when a pointer is reused enough times to amortize the
-  one-time `compile/1` call. For one-off lookups, `resolve/2` remains simpler.
-  """
-  @spec resolve_compiled(document, compiled_pointer) :: result
-  defdelegate resolve_compiled(document, pointer), to: __MODULE__.RFC6901
 
   @doc """
   Resolves multiple JSON Pointers against a JSON document in a batch.
@@ -125,7 +95,7 @@ defmodule ExJSONPointer do
   ## Examples
 
       iex> doc = %{"foo" => %{"bar" => "baz", "qux" => "corge"}}
-      iex> ExJSONPointer.batch_resolve(doc, ["/foo/bar", "/foo/qux", "/foo/unknown"])
+      iex> ExJSONPointerBefore.batch_resolve(doc, ["/foo/bar", "/foo/qux", "/foo/unknown"])
       %{
         "/foo/bar" => {:ok, "baz"},
         "/foo/qux" => {:ok, "corge"},
@@ -133,14 +103,14 @@ defmodule ExJSONPointer do
       }
 
       iex> doc = %{"users" => %{"1" => %{"profile" => %{"name" => "alice", "email" => "alice@example.com"}}}}
-      iex> ExJSONPointer.batch_resolve(doc, ["/users/1/profile/name", "/users/1/profile/email"])
+      iex> ExJSONPointerBefore.batch_resolve(doc, ["/users/1/profile/name", "/users/1/profile/email"])
       %{
         "/users/1/profile/name" => {:ok, "alice"},
         "/users/1/profile/email" => {:ok, "alice@example.com"}
       }
 
       iex> doc = %{"foo" => "bar"}
-      iex> ExJSONPointer.batch_resolve(doc, ["", "#", "foo"])
+      iex> ExJSONPointerBefore.batch_resolve(doc, ["", "#", "foo"])
       %{
         "" => {:ok, %{"foo" => "bar"}},
         "#" => {:ok, %{"foo" => "bar"}},
@@ -170,18 +140,12 @@ defmodule ExJSONPointer do
   - `document`: The JSON document to be processed.
   - `pointers`: A list of JSON pointer strings.
   - `acc`: The initial accumulator.
-  - `reduce_fun`: A reducer callback invoked exactly once for each pointer occurrence.
-
-  ## Notes
-
-  Results may be reduced in grouped traversal order rather than input order. Callers
-  that need input ordering should include ordering information in the accumulator and
-  sort after reduction. Duplicate pointers invoke the reducer once per occurrence.
+  - `reduce_fun`: A reducer callback invoked for each pointer result.
 
   ## Examples
 
       iex> doc = %{"users" => %{"1" => %{"profile" => %{"name" => "alice", "email" => "alice@example.com"}}}}
-      iex> ExJSONPointer.batch_resolve_reduce(
+      iex> ExJSONPointerBefore.batch_resolve_reduce(
       ...>   doc,
       ...>   ["/users/1/profile/name", "/users/1/profile/email", "/users/2/profile/name"],
       ...>   %{},
@@ -198,7 +162,7 @@ defmodule ExJSONPointer do
       }
 
       iex> doc = %{"foo" => "bar"}
-      iex> ExJSONPointer.batch_resolve_reduce(
+      iex> ExJSONPointerBefore.batch_resolve_reduce(
       ...>   doc,
       ...>   ["", "#", "foo"],
       ...>   [],
@@ -234,15 +198,15 @@ defmodule ExJSONPointer do
   ## Examples
 
       iex> data = %{"foo" => ["bar", "baz"], "highly" => %{"nested" => %{"objects" => true}}}
-      iex> ExJSONPointer.resolve(data, "/foo/1", "0")
+      iex> ExJSONPointerBefore.resolve(data, "/foo/1", "0")
       {:ok, "baz"}
-      iex> ExJSONPointer.resolve(data, "/foo/1", "1/0")
+      iex> ExJSONPointerBefore.resolve(data, "/foo/1", "1/0")
       {:ok, "bar"}
-      iex> ExJSONPointer.resolve(data, "/foo/1", "0-1")
+      iex> ExJSONPointerBefore.resolve(data, "/foo/1", "0-1")
       {:ok, "bar"}
-      iex> ExJSONPointer.resolve(data, "/foo/1", "2/highly/nested/objects")
+      iex> ExJSONPointerBefore.resolve(data, "/foo/1", "2/highly/nested/objects")
       {:ok, true}
-      iex> ExJSONPointer.resolve(data, "/foo/1", "0#")
+      iex> ExJSONPointerBefore.resolve(data, "/foo/1", "0#")
       {:ok, 1}
   """
   @spec resolve(document, pointer, String.t()) :: result
@@ -281,7 +245,7 @@ defmodule ExJSONPointer do
       iex> fun = fn current, ref_token, {_document, acc} ->
       ...>   {:cont, {current, Map.put(acc, ref_token, current)}}
       ...> end
-      iex> {value, acc} = ExJSONPointer.resolve_while(data, "/a/b/c/0", init_acc, fun)
+      iex> {value, acc} = ExJSONPointerBefore.resolve_while(data, "/a/b/c/0", init_acc, fun)
       iex> value
       10
       iex> acc["c"]
@@ -302,16 +266,16 @@ defmodule ExJSONPointer do
 
   ## Examples
 
-      iex> ExJSONPointer.decode_path("#/$defs/name")
+      iex> ExJSONPointerBefore.decode_path("#/$defs/name")
       {:ok, ["$defs", "name"]}
 
-      iex> ExJSONPointer.decode_path("/items/0")
+      iex> ExJSONPointerBefore.decode_path("/items/0")
       {:ok, ["items", "0"]}
 
-      iex> ExJSONPointer.decode_path("#")
+      iex> ExJSONPointerBefore.decode_path("#")
       {:ok, []}
 
-      iex> ExJSONPointer.decode_path("foo")
+      iex> ExJSONPointerBefore.decode_path("foo")
       {:error, "invalid JSON pointer syntax"}
   """
   @spec decode_path(String.t()) :: {:ok, [String.t()]} | {:error, String.t()}
@@ -328,19 +292,19 @@ defmodule ExJSONPointer do
   The `opts` argument defaults to `[format: "json_string"]`.
 
   ## Examples
-      iex> ExJSONPointer.encode_path(["$defs", "name"])
+      iex> ExJSONPointerBefore.encode_path(["$defs", "name"])
       "/$defs/name"
 
-      iex> ExJSONPointer.encode_path(["$defs", "name"], format: "json_string")
+      iex> ExJSONPointerBefore.encode_path(["$defs", "name"], format: "json_string")
       "/$defs/name"
 
-      iex> ExJSONPointer.encode_path(["$defs", "name"], format: "uri_fragment")
+      iex> ExJSONPointerBefore.encode_path(["$defs", "name"], format: "uri_fragment")
       "#/$defs/name"
 
-      iex> ExJSONPointer.encode_path(["a b", "c%d"], format: "uri_fragment")
+      iex> ExJSONPointerBefore.encode_path(["a b", "c%d"], format: "uri_fragment")
       "#/a%20b/c%25d"
 
-      iex> ExJSONPointer.encode_path([], format: "uri_fragment")
+      iex> ExJSONPointerBefore.encode_path([], format: "uri_fragment")
       "#"
   """
   @spec encode_path([String.t() | integer()], keyword()) :: String.t()
@@ -362,34 +326,34 @@ defmodule ExJSONPointer do
 
   ## Examples
 
-      iex> ExJSONPointer.valid_json_pointer?("/foo/bar")
+      iex> ExJSONPointerBefore.valid_json_pointer?("/foo/bar")
       true
 
-      iex> ExJSONPointer.valid_json_pointer?("/foo/bar~0/baz~1/%a")
+      iex> ExJSONPointerBefore.valid_json_pointer?("/foo/bar~0/baz~1/%a")
       true
 
-      iex> ExJSONPointer.valid_json_pointer?("")
+      iex> ExJSONPointerBefore.valid_json_pointer?("")
       true
 
-      iex> ExJSONPointer.valid_json_pointer?("/")
+      iex> ExJSONPointerBefore.valid_json_pointer?("/")
       true
 
-      iex> ExJSONPointer.valid_json_pointer?("/foo//bar")
+      iex> ExJSONPointerBefore.valid_json_pointer?("/foo//bar")
       true
 
-      iex> ExJSONPointer.valid_json_pointer?("/~1.1")
+      iex> ExJSONPointerBefore.valid_json_pointer?("/~1.1")
       true
 
-      iex> ExJSONPointer.valid_json_pointer?("/foo/bar~")
+      iex> ExJSONPointerBefore.valid_json_pointer?("/foo/bar~")
       false
 
-      iex> ExJSONPointer.valid_json_pointer?("/~2")
+      iex> ExJSONPointerBefore.valid_json_pointer?("/~2")
       false
 
-      iex> ExJSONPointer.valid_json_pointer?("#")
+      iex> ExJSONPointerBefore.valid_json_pointer?("#")
       false
 
-      iex> ExJSONPointer.valid_json_pointer?("some/path")
+      iex> ExJSONPointerBefore.valid_json_pointer?("some/path")
       false
   """
   @spec valid_json_pointer?(pointer) :: boolean()
@@ -408,16 +372,16 @@ defmodule ExJSONPointer do
 
   ## Examples
 
-      iex> ExJSONPointer.valid_relative_json_pointer?("1")
+      iex> ExJSONPointerBefore.valid_relative_json_pointer?("1")
       true
 
-      iex> ExJSONPointer.valid_relative_json_pointer?("0/foo/bar")
+      iex> ExJSONPointerBefore.valid_relative_json_pointer?("0/foo/bar")
       true
 
-      iex> ExJSONPointer.valid_relative_json_pointer?("0#")
+      iex> ExJSONPointerBefore.valid_relative_json_pointer?("0#")
       true
 
-      iex> ExJSONPointer.valid_relative_json_pointer?("/foo/bar")
+      iex> ExJSONPointerBefore.valid_relative_json_pointer?("/foo/bar")
       false
   """
   @spec valid_relative_json_pointer?(String.t()) :: boolean()

@@ -154,6 +154,36 @@ defmodule ExJSONPointerTest do
     end
   end
 
+  describe "compiled pointers" do
+    test "resolve repeatedly without reparsing the pointer" do
+      assert {:ok, pointer} = ExJSONPointer.compile("/users/0/name")
+
+      assert ExJSONPointer.resolve_compiled(%{"users" => [%{"name" => "alice"}]}, pointer) ==
+               {:ok, "alice"}
+
+      assert ExJSONPointer.resolve_compiled(%{"users" => [%{"name" => "bob"}]}, pointer) ==
+               {:ok, "bob"}
+    end
+
+    test "preserves root, URI fragment, escaping, nil, and terminal hash semantics" do
+      document = %{"a+b" => %{"a/b" => nil}, "items" => [1, 2]}
+
+      assert {:ok, root} = ExJSONPointer.compile("#")
+      assert ExJSONPointer.resolve_compiled(document, root) == {:ok, document}
+
+      assert {:ok, escaped} = ExJSONPointer.compile("#/a+b/a~1b")
+      assert ExJSONPointer.resolve_compiled(document, escaped) == {:ok, nil}
+
+      assert {:ok, index} = ExJSONPointer.compile("/items/1#")
+      assert ExJSONPointer.resolve_compiled(document, index) == {:ok, 1}
+    end
+
+    test "rejects the same invalid surface syntax as resolve/2" do
+      assert ExJSONPointer.compile("plain") == {:error, "invalid JSON pointer syntax"}
+      assert ExJSONPointer.compile("#items/0") == {:error, "invalid JSON pointer syntax"}
+    end
+  end
+
   describe "decode_path/1" do
     test "decodes JSON string and URI fragment representations" do
       assert ExJSONPointer.decode_path("") == {:ok, []}
@@ -236,6 +266,21 @@ defmodule ExJSONPointerTest do
   test "the ref token size is exceeded the depth of input json" do
     assert ExJSONPointer.resolve(%{"a" => %{"b" => %{"c" => [1, 2, 3]}}}, "/a/b/c///") ==
              {:error, "not found"}
+  end
+
+  test "does not ignore unresolved tokens after scalar array values" do
+    document = %{"items" => [1, nil, %{"name" => "third"}]}
+
+    assert ExJSONPointer.resolve(document, "/items/0/missing") == {:error, "not found"}
+    assert ExJSONPointer.resolve(document, "/items/1/missing") == {:error, "not found"}
+    assert ExJSONPointer.resolve(document, "/items/2/name") == {:ok, "third"}
+  end
+
+  test "does not confuse document values with the internal missing marker" do
+    document = %{"atom" => :not_found, "items" => [:not_found]}
+
+    assert ExJSONPointer.resolve(document, "/atom") == {:ok, :not_found}
+    assert ExJSONPointer.resolve(document, "/items/0") == {:ok, :not_found}
   end
 
   test "use resolve_while/4 to struct a map with the refer token and value" do

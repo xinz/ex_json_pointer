@@ -113,21 +113,6 @@ iex> ExJSONPointer.resolve(%{"a" =>%{"b" => %{"c" => [1, 2, 3]}}}, "#a")
 
 ```
 
-## Compiled pointers
-
-When the same pointer is applied repeatedly, compile it once to avoid repeated
-splitting, URI decoding, and token-list allocation:
-
-```elixir
-iex> {:ok, pointer} = ExJSONPointer.compile("#/users/0/name")
-iex> ExJSONPointer.resolve_compiled(%{"users" => [%{"name" => "alice"}]}, pointer)
-{:ok, "alice"}
-iex> ExJSONPointer.resolve_compiled(%{"users" => [%{"name" => "bob"}]}, pointer)
-{:ok, "bob"}
-```
-
-For one-off lookups, `resolve/2` remains the simpler choice. Compiled pointers preserve the JSON-string and URI-fragment behavior of `resolve/2`.
-
 ## Path encode/decode helpers
 
 Use `decode_path/1` when you want to convert a JSON Pointer string into a tokenized path. Use `encode_path/2` to encode tokens back into a pointer string, its `opts` argument defaults to `[format: "json_string"]`.

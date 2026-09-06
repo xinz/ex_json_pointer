@@ -1,7 +1,8 @@
 defmodule ExJSONPointer.RFC6901 do
   @moduledoc false
 
-  @not_found :not_found
+  alias ExJSONPointer.{BatchResolver, Compiled}
+
   @error_not_found {:error, "not found"}
   @error_invalid_syntax {:error, "invalid JSON pointer syntax"}
 
@@ -12,6 +13,35 @@ defmodule ExJSONPointer.RFC6901 do
       when is_map(document) and is_binary(pointer)
       when is_list(document) and is_binary(pointer) do
     do_resolve(document, pointer)
+  end
+
+  def compile(pointer) when is_binary(pointer) do
+    case split_json_pointer(pointer) do
+      {:error, _} = error -> error
+      tokens -> {:ok, %Compiled{tokens: tokens}}
+    end
+  end
+
+  def compile(_pointer), do: @error_invalid_syntax
+
+  def resolve_compiled(document, %Compiled{tokens: []}), do: {:ok, document}
+
+  def resolve_compiled(document, %Compiled{tokens: tokens})
+      when is_map(document) or is_list(document) do
+    process(document, tokens)
+  end
+
+  def relative_context(document, pointer, prefix)
+      when (is_map(document) or is_list(document)) and is_binary(pointer) and
+             is_integer(prefix) and prefix >= 0 do
+    case split_json_pointer(pointer) do
+      {:error, _} = error ->
+        error
+
+      tokens ->
+        target_depth = length(tokens) - prefix
+        resolve_relative_context(document, tokens, 0, target_depth, :error, :error)
+    end
   end
 
   def decode_path(""), do: {:ok, []}
@@ -81,187 +111,22 @@ defmodule ExJSONPointer.RFC6901 do
   end
   def valid_json_pointer?(_), do: false
 
-  def batch_resolve(document, pointers) when is_list(pointers) do
-    batch_resolve_reduce(document, pointers, %{}, fn pointer, result, acc ->
-      Map.put(acc, pointer, result)
-    end)
-  end
+  defdelegate batch_resolve(document, pointers), to: BatchResolver, as: :resolve
 
-  def batch_resolve_reduce(document, pointers, acc, reduce_fun)
-      when is_list(pointers) and is_function(reduce_fun, 3) do
-    with false <- should_prefer_fallback?(pointers),
-         {acc, groups, total, unique_first_tokens} <-
-           classify_batch_pointers(document, pointers, {acc, %{}, 0, 0}, reduce_fun) do
-      if should_use_grouped_batch?(total, unique_first_tokens) do
-        batch_process_groups(document, groups, acc, reduce_fun)
-      else
-        fallback_batch_to_resolve(document, groups, acc, reduce_fun)
-      end
-    else
-      _ ->
-        fallback_batch_to_resolve(document, pointers, acc, reduce_fun)
-    end
-  end
-
-  defp should_use_grouped_batch?(total, _unique_first_tokens)
-       when total <= 8,
-       do: true
-
-  defp should_use_grouped_batch?(total, unique_first_tokens)
-       when total <= 32 and unique_first_tokens * 2 <= total,
-       do: true
-
-  defp should_use_grouped_batch?(total, unique_first_tokens)
-       when total > 32 and unique_first_tokens * 3 <= total,
-       do: true
-
-  defp should_use_grouped_batch?(_total, _unique_first_tokens), do: false
-
-  defp should_prefer_fallback?(pointers) do
-    calc_unique_to_fallback?(pointers, length(pointers), 16)
-  end
-
-  defp calc_unique_to_fallback?(_pointers, pointers_size, _sample_size)
-       when pointers_size <= 8, do: false
-
-  defp calc_unique_to_fallback?(pointers, pointers_size, sample_size) do
-    sample_size = min(pointers_size, sample_size)
-    unique_first_tokens =
-      pointers
-      |> Enum.take(sample_size)
-      |> Enum.reduce(MapSet.new(), fn pointer, acc ->
-        case split_json_pointer(pointer, [parts: 3]) do
-          [first | _rest] -> MapSet.put(acc, first)
-          _ -> acc
-        end
-      end)
-      |> MapSet.size()
-    unique_first_tokens * 4 >= sample_size * 3
-  end
-
-  defp classify_batch_pointers(_document, [], acc, _reduce_fun), do: acc
-  defp classify_batch_pointers(document, [pointer | rest], acc, reduce_fun) do
-    result = classify_batch_pointer(document, pointer, acc, reduce_fun)
-    classify_batch_pointers(document, rest, result, reduce_fun)
-  end
-
-  defp classify_batch_pointer(document, pointer, {acc, groups, total, unique_count}, reduce_fun) do
-    case split_json_pointer(pointer) do
-      [] ->
-        {reduce_fun.(pointer, {:ok, document}, acc), groups, total + 1, unique_count}
-
-      {:error, _} = error ->
-        {reduce_fun.(pointer, error, acc), groups, total + 1, unique_count}
-
-      [first] ->
-        case value_to_token(document, first) do
-          {:ok, _value} = result ->
-            {reduce_fun.(pointer, result, acc), groups, total + 1, unique_count}
-
-          {:error, _} = error ->
-            {reduce_fun.(pointer, error, acc), groups, total + 1, unique_count}
-        end
-
-      [first | rest] ->
-        entries = Map.get(groups, first, nil)
-
-        if entries != nil do
-          {acc, %{groups | first => [{pointer, rest} | entries]}, total + 1, unique_count}
-        else
-          {acc, Map.put(groups, first, [{pointer, rest}]), total + 1, unique_count + 1}
-        end
-    end
-  end
-
-  defp fallback_batch_to_resolve(document, pointers, acc, reduce_fun) when is_list(pointers) do
-    do_fallback_batch_to_resolve(document, pointers, acc, reduce_fun)
-  end
-
-  defp fallback_batch_to_resolve(document, groups, acc, reduce_fun) when is_map(groups) do
-    do_fallback_batch_groups_to_resolve(document, Map.to_list(groups), acc, reduce_fun)
-  end
-
-  defp do_fallback_batch_to_resolve(_doc, [], acc, _reduce_fun), do: acc
-  defp do_fallback_batch_to_resolve(document, [pointer | rest], acc, reduce_fun) do
-    acc = reduce_fun.(pointer, resolve(document, pointer), acc)
-    do_fallback_batch_to_resolve(document, rest, acc, reduce_fun)
-  end
-
-  defp do_fallback_batch_groups_to_resolve(_document, [], acc, _reduce_fun), do: acc
-  defp do_fallback_batch_groups_to_resolve(document, [{first_token, items} | rest], acc, reduce_fun) do
-    acc = do_fallback_batch_tokens_to_resolve(document, first_token, items, acc, reduce_fun)
-    do_fallback_batch_groups_to_resolve(document, rest, acc, reduce_fun)
-  end
-
-  defp do_fallback_batch_tokens_to_resolve(_document, _first_token, [], acc, _reduce_fun), do: acc
-  defp do_fallback_batch_tokens_to_resolve(document, first_token, [{pointer, rest_tokens} | rest], acc, reduce_fun) do
-    value = process(document, [first_token | rest_tokens])
-    acc = reduce_fun.(pointer, value, acc)
-    do_fallback_batch_tokens_to_resolve(document, first_token, rest, acc, reduce_fun)
-  end
-
-  defp batch_process_groups(_document, [], acc, _reduce_fun), do: acc
-
-  defp batch_process_groups(document, groups, acc, reduce_fun) do
-    batch_process_group(document, Map.to_list(groups), acc, reduce_fun)
-  end
-
-  defp batch_process_group(_document, [], acc, _reduce_fun), do: acc
-
-  defp batch_process_group(document, [{token, entries} | rest], acc, reduce_fun) do
-    acc = handle_batch_group(document, token, entries, acc, reduce_fun)
-    batch_process_group(document, rest, acc, reduce_fun)
-  end
-
-  defp handle_batch_group(document, token, entries, acc, reduce_fun) do
-    case value_to_token(document, token) do
-      {:ok, next_document} ->
-        {acc, next_groups} = batch_partition(next_document, entries, acc, reduce_fun)
-        batch_process_groups(next_document, next_groups, acc, reduce_fun)
-
-      {:error, _} = error ->
-        fail_entries(entries, error, acc, reduce_fun)
-    end
-  end
-
-  defp batch_partition(document, entries, acc, reduce_fun) do
-    batch_partition_entry(document, entries, {acc, %{}}, reduce_fun)
-  end
-
-  defp batch_partition_entry(_document, [], result, _reduce_fun), do: result
-
-  defp batch_partition_entry(document, [{pointer, [next]} | rest_entry], {acc, acc_groups}, reduce_fun) do
-    acc = reduce_fun.(pointer, value_to_token(document, next), acc)
-    batch_partition_entry(document, rest_entry, {acc, acc_groups}, reduce_fun)
-  end
-
-  defp batch_partition_entry(document, [{pointer, [next | other_tokens]} | rest_entry], {acc, acc_groups}, reduce_fun) do
-    batch_partition_entry(
-      document,
-      rest_entry,
-      {acc, prepend_group_entry(acc_groups, next, {pointer, other_tokens})},
-      reduce_fun
-    )
-  end
-
-  defp prepend_group_entry(groups, key, entry) do
-    case groups do
-      %{^key => entries} -> %{groups | key => [entry | entries]}
-      %{} -> Map.put(groups, key, [entry])
-    end
-  end
-
-  defp fail_entries(entries, error, acc, reduce_fun) do
-    Enum.reduce(entries, acc, fn {pointer, _rest}, inner_acc ->
-      reduce_fun.(pointer, error, inner_acc)
-    end)
-  end
+  defdelegate batch_resolve_reduce(document, pointers, acc, reduce_fun),
+    to: BatchResolver,
+    as: :reduce
 
   defp unescape(pointer) do
-    String.replace(pointer, ["~1", "~0"], fn
-      "~1" -> "/"
-      "~0" -> "~"
-    end)
+    case :binary.match(pointer, "~") do
+      :nomatch ->
+        pointer
+
+      {_position, 1} ->
+        pointer
+        |> String.replace("~1", "/")
+        |> String.replace("~0", "~")
+    end
   end
 
   defp escape_token(token) when is_binary(token) do
@@ -318,49 +183,51 @@ defmodule ExJSONPointer.RFC6901 do
     end
   end
 
-  defp process(value, []) do
-    {:ok, value}
-  end
+  @doc false
+  def process(value, []), do: {:ok, value}
 
-  defp process(document, [ref_token]) when is_list(document) and is_binary(ref_token) do
+  def process(document, [ref_token]) when is_list(document) or is_map(document) do
     value_to_token(document, ref_token)
   end
 
-  defp process(document, [ref_token | rest]) when is_list(document) do
-    with index <- String.to_integer(ref_token),
-         value when is_map(value) or is_list(value) <- Enum.at(document, index, @not_found) do
-      process(value, rest)
-    else
-      @not_found ->
-        @error_not_found
+  def process(document, [ref_token | rest]) when is_map(document) do
+    key = unescape(ref_token)
 
-      value ->
-        {:ok, value}
+    case document do
+      %{^key => value} -> process(value, rest)
+      %{} -> @error_not_found
     end
-  rescue
-    ArgumentError ->
-      @error_not_found
   end
 
-  defp process(document, [ref_token]) when is_map(document) do
-    value_to_token(document, ref_token)
+  def process(document, [ref_token | rest]) when is_list(document) do
+    case parse_index(ref_token) do
+      {:ok, index} when index >= 0 -> process_list_index(document, index, rest)
+      {:ok, index} -> process_negative_list_index(document, index, rest)
+      :error -> @error_not_found
+    end
   end
 
-  defp process(document, [ref_token | rest]) when is_map(document) do
-    inner = Map.get(document, unescape(ref_token), @not_found)
-    if inner != @not_found, do: process(inner, rest), else: @error_not_found
+  def process(_value, _ref_tokens), do: @error_not_found
+
+  defp process_list_index([value | _rest], 0, ref_tokens), do: process(value, ref_tokens)
+
+  defp process_list_index([_value | rest], index, ref_tokens) do
+    process_list_index(rest, index - 1, ref_tokens)
   end
 
-  defp process(value, _ref_tokens)
-       when not is_list(value)
-       when not is_map(value) do
-    @error_not_found
+  defp process_list_index([], _index, _ref_tokens), do: @error_not_found
+
+  defp process_negative_list_index(document, index, ref_tokens) do
+    case Enum.fetch(document, index) do
+      {:ok, value} -> process(value, ref_tokens)
+      :error -> @error_not_found
+    end
   end
 
-  defp value_to_token(document, "") when is_map(document) do
-    find_value_by_token(document, "")
-  end
-  defp value_to_token(document, token) when is_map(document) do
+  @doc false
+  def value_to_token(document, "") when is_map(document), do: find_value_by_token(document, "")
+
+  def value_to_token(document, token) when is_map(document) do
     if :binary.last(token) == ?# do
       token = binary_part(token, 0, byte_size(token) - 1)
       find_value_by_token(document, token, true)
@@ -369,48 +236,88 @@ defmodule ExJSONPointer.RFC6901 do
     end
   end
 
-  defp value_to_token(document, "") when is_list(document) do
-    find_value_by_index(document, "")
-  end
-  defp value_to_token(document, token) when is_list(document) do
+  def value_to_token(document, "") when is_list(document), do: find_value_by_index(document, "")
+
+  def value_to_token(document, token) when is_list(document) do
     if :binary.last(token) == ?# do
       token = binary_part(token, 0, byte_size(token) - 1)
       find_value_by_index(document, token, true)
     else
       find_value_by_index(document, token)
     end
-  rescue
-    ArgumentError ->
-      @error_not_found
   end
-  defp value_to_token(_, _), do: @error_not_found
+
+  def value_to_token(_, _), do: @error_not_found
+
+  @doc false
+  def fetch_child(document, token) when is_map(document) do
+    case Map.fetch(document, unescape(token)) do
+      {:ok, value} -> {:ok, value}
+      :error -> @error_not_found
+    end
+  end
+
+  def fetch_child(document, token) when is_list(document) do
+    with {:ok, index} <- parse_index(token),
+         {:ok, value} <- Enum.fetch(document, index) do
+      {:ok, value}
+    else
+      _ -> @error_not_found
+    end
+  end
+
+  def fetch_child(_document, _token), do: @error_not_found
+
+  defp parse_index(token) do
+    case Integer.parse(token) do
+      {index, ""} -> {:ok, index}
+      _ -> :error
+    end
+  end
 
   defp find_value_by_index(document, token, return_index \\ false) do
-    case Integer.parse(token) do
-      {index, ""} ->
-        case Enum.at(document, index, @not_found) do
-          @not_found ->
-            @error_not_found
-          _value when return_index == true ->
-            {:ok, index}
-          value ->
-            {:ok, value}
-        end
-      _ ->
-        @error_not_found
+    with {:ok, index} <- parse_index(token),
+         {:ok, value} <- Enum.fetch(document, index) do
+      if return_index, do: {:ok, index}, else: {:ok, value}
+    else
+      _ -> @error_not_found
     end
   end
 
   defp find_value_by_token(document, token, return_token \\ false) do
-    case Map.get(document, unescape(token), @not_found) do
-      @not_found ->
-        @error_not_found
-      _value when return_token == true ->
-        {:ok, token}
-      value ->
-        {:ok, value}
+    case Map.fetch(document, unescape(token)) do
+      {:ok, _value} when return_token -> {:ok, token}
+      {:ok, value} -> {:ok, value}
+      :error -> @error_not_found
     end
   end
+
+  defp resolve_relative_context(value, [], depth, target_depth, target, parent) do
+    target = capture_relative_target(target, value, depth, target_depth)
+    {:ok, value, target, parent}
+  end
+
+  defp resolve_relative_context(value, [token | rest], depth, target_depth, target, parent) do
+    target = capture_relative_target(target, value, depth, target_depth)
+
+    parent =
+      if depth == target_depth - 1 do
+        {:ok, value, token}
+      else
+        parent
+      end
+
+    case fetch_child(value, token) do
+      {:ok, child} ->
+        resolve_relative_context(child, rest, depth + 1, target_depth, target, parent)
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp capture_relative_target(_target, value, depth, depth), do: {:ok, value}
+  defp capture_relative_target(target, _value, _depth, _target_depth), do: target
 
   def resolve_while(document, pointer, acc, resolve_fun)
       when is_map(document) and is_binary(pointer)
@@ -421,41 +328,25 @@ defmodule ExJSONPointer.RFC6901 do
 
       ref_tokens when is_list(ref_tokens) ->
         Enum.reduce_while(ref_tokens, {document, acc}, fn ref_token, {doc, acc} ->
-          value =
-            cond do
-              is_list(doc) ->
-                index = String.to_integer(ref_token)
-                Enum.at(doc, index, @not_found)
-
-              is_map(doc) ->
-                Map.get(doc, unescape(ref_token), @not_found)
-
-              true ->
-                @not_found
-            end
-
-          if value == @not_found do
-            {:halt, @error_not_found}
-          else
-            resolve_fun.(value, ref_token, {doc, acc})
+          case fetch_child(doc, ref_token) do
+            {:ok, value} -> resolve_fun.(value, ref_token, {doc, acc})
+            {:error, _} = error -> {:halt, error}
           end
         end)
 
       {:error, _} = error ->
         error
     end
-  rescue
-    ArgumentError ->
-      @error_not_found
   end
 
-  defp split_json_pointer(pointer, opts \\ [])
-  defp split_json_pointer("", _opts), do: []
-  defp split_json_pointer("#", _opts), do: []
-  defp split_json_pointer("/" <> _ = pointer, opts) do
+  @doc false
+  def split_json_pointer(pointer, opts \\ [])
+  def split_json_pointer("", _opts), do: []
+  def split_json_pointer("#", _opts), do: []
+  def split_json_pointer("/" <> _ = pointer, opts) do
     pointer |> String.split("/", opts) |> remove_first_item_if_empty_str()
   end
-  defp split_json_pointer("#" <> _ = pointer, opts) do
+  def split_json_pointer("#/" <> _ = pointer, opts) do
     # URI Fragment Identifier Representation.
     # Follow the syntax specified in [RFC-6901 Section 3], which consists of zero or more reference tokens,
     # each prefixed with a forward slash character "/" (%x2F).
@@ -467,7 +358,7 @@ defmodule ExJSONPointer.RFC6901 do
         @error_invalid_syntax
     end
   end
-  defp split_json_pointer(_pointer, _opts), do: @error_invalid_syntax
+  def split_json_pointer(_pointer, _opts), do: @error_invalid_syntax
 
   defp remove_first_item_if_empty_str(["" | ref_tokens]), do: ref_tokens
   defp remove_first_item_if_empty_str(ref_tokens), do: ref_tokens
