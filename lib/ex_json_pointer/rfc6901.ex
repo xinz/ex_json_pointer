@@ -327,17 +327,37 @@ defmodule ExJSONPointer.RFC6901 do
         {document, acc}
 
       ref_tokens when is_list(ref_tokens) ->
-        Enum.reduce_while(ref_tokens, {document, acc}, fn ref_token, {doc, acc} ->
-          case fetch_child(doc, ref_token) do
-            {:ok, value} -> resolve_fun.(value, ref_token, {doc, acc})
-            {:error, _} = error -> {:halt, error}
-          end
-        end)
+        do_resolve_while(document, ref_tokens, acc, resolve_fun, &fetch_child/2)
 
       {:error, _} = error ->
         error
     end
   end
+
+  def resolve_while(document, ref_tokens, acc, resolve_fun)
+      when is_map(document) and is_list(ref_tokens)
+      when is_list(document) and is_list(ref_tokens) do
+    do_resolve_while(document, ref_tokens, acc, resolve_fun, &fetch_decoded_child/2)
+  end
+
+  defp do_resolve_while(document, ref_tokens, acc, resolve_fun, fetch_fun) do
+    Enum.reduce_while(ref_tokens, {document, acc}, fn ref_token, {doc, acc} ->
+      case fetch_fun.(doc, ref_token) do
+        {:ok, value} -> resolve_fun.(value, ref_token, {doc, acc})
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  # Decoded map keys must bypass fetch_child/2's JSON Pointer unescaping.
+  defp fetch_decoded_child(document, token) when is_map(document) do
+    case Map.fetch(document, token) do
+      {:ok, value} -> {:ok, value}
+      :error -> @error_not_found
+    end
+  end
+
+  defp fetch_decoded_child(document, token), do: fetch_child(document, token)
 
   @doc false
   def split_json_pointer(pointer, opts \\ [])

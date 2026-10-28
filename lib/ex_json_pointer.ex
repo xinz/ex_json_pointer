@@ -17,6 +17,11 @@ defmodule ExJSONPointer do
   @type pointer :: String.t()
 
   @typedoc """
+  A JSON Pointer string or a path of already-decoded string tokens.
+  """
+  @type pointer_or_path :: pointer() | [String.t()]
+
+  @typedoc """
   A parsed JSON Pointer that can be reused without reparsing its source string.
   """
   @type compiled_pointer :: ExJSONPointer.Compiled.t()
@@ -249,25 +254,34 @@ defmodule ExJSONPointer do
   defdelegate resolve(document, start_json_pointer, relative), to: __MODULE__.Relative
 
   @doc """
-  Traverses a JSON document using a JSON pointer, maintaining an accumulator.
+  Traverses a JSON document using a JSON Pointer or decoded path, maintaining an accumulator.
 
   This function is similar to `Enum.reduce_while/3` but follows the path of a JSON Pointer.
   It allows tracking the traversal path and accumulating values as the pointer is resolved.
   This is useful for implementing operations that require context about the traversal path,
   such as Relative JSON Pointers.
 
+  A decoded path, such as the output of `decode_path/1`, is a list of string tokens.
+  These tokens are used literally, without URI decoding or JSON Pointer unescaping.
+  Numeric-looking tokens remain string keys in maps and are interpreted as indices
+  only when traversing a list.
+
+  The root paths `[]`, `""`, and `"#"` return `{document, acc}` without invoking
+  the callback. Missing targets return `{:error, "not found"}`.
+
   ## Parameters
 
   - `document`: The JSON document to be processed.
-  - `pointer`: A JSON pointer string.
+  - `pointer_or_path`: A JSON Pointer string or a decoded list of string tokens.
   - `acc`: An initial accumulator value.
-  - `resolve_fun`: A callback function invoked for each segment of the pointer.
+  - `resolve_fun`: A callback function invoked for each token in the path.
 
   ## The Callback Function
 
   The `resolve_fun` receives three arguments:
   1. The current value found at the reference token.
-  2. The current reference token (key or index) being processed.
+  2. The current reference token (key or index) being processed. String pointers pass
+     tokens before JSON Pointer unescaping; decoded paths pass the supplied tokens unchanged.
   3. A tuple `{current_document, accumulator}` containing the document context at the current level and the accumulator.
 
   It must return one of:
@@ -286,9 +300,23 @@ defmodule ExJSONPointer do
       10
       iex> acc["c"]
       [10, 20, 30]
+
+      iex> document = %{"a/b" => %{"~1" => 42}}
+      iex> {:ok, path} = ExJSONPointer.decode_path("#/a~1b/~01")
+      iex> callback = fn value, _token, {_parent, count} ->
+      ...>   {:cont, {value, count + 1}}
+      ...> end
+      iex> ExJSONPointer.resolve_while(document, path, 0, callback)
+      {42, 2}
   """
-  @spec resolve_while(document, pointer, acc, (term, String.t(), {document, acc} -> {:cont, {term, acc}} | {:halt, term})) :: {term, acc} | {:error, String.t()} when acc: term()
-  defdelegate resolve_while(document, pointer, acc, resolve_fun), to: __MODULE__.RFC6901
+  @spec resolve_while(
+          document,
+          pointer_or_path,
+          acc,
+          (term, String.t(), {document, acc} -> {:cont, {term, acc}} | {:halt, term})
+        ) :: {term, acc} | {:error, String.t()}
+        when acc: term()
+  defdelegate resolve_while(document, pointer_or_path, acc, resolve_fun), to: __MODULE__.RFC6901
 
   @doc """
   Decodes a JSON Pointer string into a tokenized path.

@@ -160,6 +160,24 @@ iex> ExJSONPointer.encode_path([], format: "uri_fragment")
 
 `decode_path/1` accepts both the JSON string and URI fragment identifier representations. `encode_path/2` supports `format: "json_string" | "uri_fragment"` and defaults to `[format: "json_string"]`.
 
+## Traversal with an accumulator
+
+`resolve_while/4` accepts either a JSON Pointer string or a decoded path of string tokens, so a path from `decode_path/1` can be reused directly:
+
+```elixir
+iex> document = %{"a/b" => %{"~1" => 42}}
+iex> {:ok, path} = ExJSONPointer.decode_path("#/a~1b/~01")
+iex> callback = fn value, _token, {_parent, count} ->
+...>   {:cont, {value, count + 1}}
+...> end
+iex> ExJSONPointer.resolve_while(document, path, 0, callback)
+{42, 2}
+```
+
+Decoded tokens are used literally and passed unchanged to the callback: no URI decoding or JSON Pointer unescaping is performed again. Numeric-looking map keys remain strings; indices are interpreted only when traversing arrays. The root paths `[]`, `""`, and `"#"` return `{document, acc}` without invoking the callback.
+
+The callback can continue with `{:cont, {value, acc}}` or stop immediately with `{:halt, result}`. Missing targets return `{:error, "not found"}`.
+
 ## Batch Resolve
 
 When you need to resolve multiple JSON pointers against the same document, you can use `batch_resolve/2`.
