@@ -183,7 +183,6 @@ defmodule ExJSONPointer.RFC6901 do
     end
   end
 
-  @doc false
   def process(value, []), do: {:ok, value}
 
   def process(document, [ref_token]) when is_list(document) or is_map(document) do
@@ -224,7 +223,6 @@ defmodule ExJSONPointer.RFC6901 do
     end
   end
 
-  @doc false
   def value_to_token(document, "") when is_map(document), do: find_value_by_token(document, "")
 
   def value_to_token(document, token) when is_map(document) do
@@ -249,7 +247,6 @@ defmodule ExJSONPointer.RFC6901 do
 
   def value_to_token(_, _), do: @error_not_found
 
-  @doc false
   def fetch_child(document, token) when is_map(document) do
     case Map.fetch(document, unescape(token)) do
       {:ok, value} -> {:ok, value}
@@ -359,7 +356,6 @@ defmodule ExJSONPointer.RFC6901 do
 
   defp fetch_decoded_child(document, token), do: fetch_child(document, token)
 
-  @doc false
   def split_json_pointer(pointer, opts \\ [])
   def split_json_pointer("", _opts), do: []
   def split_json_pointer("#", _opts), do: []
